@@ -43,7 +43,7 @@ if not a.resume_transport:
             if other != n:
                 contact = (a.state / f'contact{other}.txt').read_text().strip()
                 command([client, 'import', contact, '--config', a.state / f'trustee{n}/config.toml'])
-    
+
 cert_config = a.state / 'certificate.cnf'
 cert_config.write_text('[req]\ndistinguished_name=dn\nreq_extensions=ext\nprompt=no\n[dn]\nCN=localhost\n[ext]\nsubjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n')
 if a.resume_transport:
