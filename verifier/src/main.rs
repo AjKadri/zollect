@@ -1,6 +1,8 @@
 #[cfg(feature = "sender")]
 mod sender;
 mod ownership;
+#[cfg(feature = "trustee")]
+mod trustee;
 use std::{collections::{HashMap, HashSet}, fs, process::Command};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use orchard::{keys::{FullViewingKey, Scope}, Address, Note};
@@ -191,6 +193,14 @@ fn main() -> Result<()> {
         Some("transfer") if args.len()==9 => sender::transfer(&args[2],&args[3],&args[4],&args[5],args[6].parse()?,&args[7],&args[8]),
         #[cfg(feature = "sender")]
         Some("attest") if args.len()==10 => sender::attest(&args[2],&args[3],&args[4],&args[5],args[6].parse()?,&args[7],&args[8],&args[9]),
+        #[cfg(feature = "trustee")]
+        Some("fund-import") if args.len()==5 => trustee::import(&args[2],&args[3],&args[4]),
+        #[cfg(feature = "trustee")]
+        Some("fund-prepare") if args.len()==8 => trustee::prepare(&args[2],&args[3],&args[4],args[5].parse()?,&args[6],&args[7]),
+        #[cfg(feature = "trustee")]
+        Some("fund-check") if args.len()==6 => trustee::check(&args[2],&args[3],&args[4],&args[5]),
+        #[cfg(feature = "trustee")]
+        Some("fund-extract") if args.len()==4 => trustee::extract(&args[2],&args[3]),
         _ => bail!("Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION"),
     }
 }

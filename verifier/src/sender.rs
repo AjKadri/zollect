@@ -27,7 +27,7 @@ fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
         .map_err(|_|anyhow!("Unable to derive regtest account"))
 }
 
-fn witness(txs: &[ChainTx], txid: &str, action: usize) -> Result<orchard::tree::MerklePath> {
+pub(crate) fn witness(txs: &[ChainTx], txid: &str, action: usize) -> Result<orchard::tree::MerklePath> {
     let mut tree=CommitmentTree::<MerkleHashOrchard,32>::empty();
     let mut result:Option<IncrementalWitness<MerkleHashOrchard,32>>=None;
     for tx in txs {
