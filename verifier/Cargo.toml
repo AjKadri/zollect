@@ -1,0 +1,23 @@
+[package]
+name = "zecathon-carrier-verifier"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+hex = "0.4"
+serde_json = "1"
+sha2 = "0.10"
+orchard = { version = "0.16", default-features = false }
+zcash_keys = { version = "=0.17.0-pre.2", default-features = false, features = ["orchard"] }
+zcash_primitives = { version = "=0.31.0-pre.2", default-features = false }
+zcash_protocol = { version = "=0.11.0-pre.1", features = ["local-consensus"] }
+
+[patch.crates-io]
+zcash_keys = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+zcash_primitives = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+zcash_protocol = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+zcash_address = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+zcash_transparent = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+equihash = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }

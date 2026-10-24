@@ -1,0 +1,16 @@
+# Local collaboration and experiment runtime state
+.agent/
+.runtime/
+.secrets/
+.env
+.env.*
+!.env.example
+.DS_Store
+verifier/target/
+public/*
+!public/issuer.ufvk
+# Private research, machine details, and execution transcripts
+EVIDENCE.md
+RULES.md
+Zecathon feasibility experiments.md
+Zecathon carrier ownership check.md
