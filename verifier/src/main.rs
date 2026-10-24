@@ -1,3 +1,6 @@
+#[cfg(feature = "sender")]
+mod sender;
+mod ownership;
 use std::{collections::{HashMap, HashSet}, fs, process::Command};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use orchard::{keys::{FullViewingKey, Scope}, Address, Note};
@@ -43,9 +46,27 @@ fn rpc(url: &str, method: &str, params: Value) -> Result<Value> {
     Ok(value["result"].clone())
 }
 
+fn rpc_batch(url: &str, calls: &[(&str,Value)]) -> Result<Vec<Value>> {
+    let request:Vec<_>=calls.iter().enumerate().map(|(i,(method,params))|
+        json!({"jsonrpc":"2.0","id":i+1,"method":method,"params":params})).collect();
+    let body=serde_json::to_string(&request)?;
+    let out=Command::new("curl").args(["--fail","--silent","--show-error","--max-time","30",
+        "-H","Content-Type: application/json","--data-binary",&body,url]).output()?;
+    ensure!(out.status.success(),"Batch transport failed: {}",String::from_utf8_lossy(&out.stderr));
+    let replies:Vec<Value>=serde_json::from_slice(&out.stdout)?;
+    let mut results=HashMap::new();
+    for reply in replies {
+        ensure!(reply["error"].is_null(),"Batch RPC error: {}",reply["error"]);
+        let id=reply["id"].as_u64().context("Missing batch id")? as usize;
+        ensure!(id>0 && id<=calls.len() && !results.contains_key(&id),"Unexpected batch id");
+        results.insert(id,reply["result"].clone());
+    }
+    (1..=calls.len()).map(|id|results.remove(&id).context("Missing batch result")).collect()
+}
+
 #[derive(Clone)]
 struct SeenNote { note: Note, memo: [u8;512], owned: bool }
-struct ChainTx { txid: String, height: u64, nullifiers: Vec<String>, notes: Vec<(usize, SeenNote)> }
+struct ChainTx { txid: String, height: u64, nullifiers: Vec<String>, commitments: Vec<[u8;32]>, notes: Vec<(usize, SeenNote)> }
 
 fn load_chain(url: &str, fvk: &FullViewingKey) -> Result<Vec<ChainTx>> {
     ensure!(rpc(url,"getblockhash",json!([0]))? == json!("029f11d80ef9765602235e1bc9727e3eb6ba20839319f761fee920d63401e327"), "Not the expected regtest genesis");
@@ -54,31 +75,41 @@ fn load_chain(url: &str, fvk: &FullViewingKey) -> Result<Vec<ChainTx>> {
     let ivks = [fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal)];
     let ovks = [fvk.to_ovk(Scope::External), fvk.to_ovk(Scope::Internal)];
     let mut txs = Vec::new();
-    for height in 1..=tip {
-        let block = rpc(url,"getblock",json!([height.to_string(),1]))?;
-        ensure!(block["height"] == height, "Unexpected block height");
-        // Coinbase is never an issuance/transfer transaction in this experiment.
-        for id in block["tx"].as_array().context("Missing tx list")?.iter().skip(1) {
-            let txid = id.as_str().context("Invalid txid")?.to_owned();
-            let raw = hex::decode(rpc(url,"getrawtransaction",json!([txid,0]))?.as_str().context("Missing raw tx")?)?;
-            let tx = Transaction::read(raw.as_slice(), BranchId::Nu6_3)?;
-            ensure!(tx.txid().to_string() == txid, "Raw txid mismatch");
-            if let Some(bundle) = tx.ironwood_bundle() {
-                let mut notes: HashMap<usize,SeenNote> = HashMap::new();
+    let heights:Vec<_>=(1..=tip).collect();
+    let mut records=Vec::new();
+    for chunk in heights.chunks(64) {
+        let calls:Vec<_>=chunk.iter().map(|h|("getblock",json!([h.to_string(),1]))).collect();
+        for (height,block) in chunk.iter().zip(rpc_batch(url,&calls)?) {
+            ensure!(block["height"]==*height,"Unexpected block height");
+            for id in block["tx"].as_array().context("Missing tx list")?.iter().skip(1) {
+                records.push((*height,id.as_str().context("Invalid txid")?.to_owned()));
+            }
+        }
+    }
+    for chunk in records.chunks(64) {
+        let calls:Vec<_>=chunk.iter().map(|(_,id)|("getrawtransaction",json!([id,0]))).collect();
+        for ((height,txid),raw_hex) in chunk.iter().zip(rpc_batch(url,&calls)?) {
+            let raw=hex::decode(raw_hex.as_str().context("Missing raw tx")?)?;
+            let tx=Transaction::read(raw.as_slice(),BranchId::Nu6_3)?;
+            ensure!(tx.txid().to_string()==*txid,"Raw txid mismatch");
+            if let Some(bundle)=tx.ironwood_bundle() {
+                let mut notes:HashMap<usize,SeenNote>=HashMap::new();
                 for (index,_,note,_,memo) in bundle.recover_outputs_with_ovks(&ovks) {
-                    notes.insert(index, SeenNote{note,memo,owned:false});
+                    notes.insert(index,SeenNote{note,memo,owned:false});
                 }
                 for (index,_,note,_,memo) in bundle.decrypt_outputs_with_keys(&ivks) {
-                    notes.insert(index, SeenNote{note,memo,owned:true});
+                    notes.insert(index,SeenNote{note,memo,owned:true});
                 }
-                let mut notes: Vec<_> = notes.into_iter().collect();
-                notes.sort_by_key(|(index,_)| *index);
-                txs.push(ChainTx { txid, height, notes,
-                    nullifiers: bundle.actions().iter().map(|a| hex::encode(a.nullifier().to_bytes())).collect() });
+                let mut notes:Vec<_>=notes.into_iter().collect();
+                notes.sort_by_key(|(i,_)|*i);
+                txs.push(ChainTx{txid:txid.clone(),height:*height,notes,
+                    nullifiers:bundle.actions().iter().map(|a|hex::encode(a.nullifier().to_bytes())).collect(),
+                    commitments:bundle.actions().iter().map(|a|a.cmx().to_bytes()).collect()});
             }
         }
     }
     ensure!(rpc(url,"getblockhash",json!([tip]))? == tip_hash, "Chain changed during scan");
+    ensure!(rpc(url,"getblockcount",json!([]))? == tip, "Chain advanced during scan; retry on a stable tip");
     println!("CHAIN regtest height={tip} hash={tip_hash}");
     Ok(txs)
 }
@@ -87,7 +118,7 @@ fn memo_text(memo: &[u8;512]) -> &str {
     std::str::from_utf8(memo).unwrap_or("").trim_end_matches('\0')
 }
 
-fn verify_issuance(txs: &[ChainTx], fvk: &FullViewingKey, collection: &str) -> Result<()> {
+fn verify_issuance(txs: &[ChainTx], fvk: &FullViewingKey, collection: &str, strict: bool) -> Result<Vec<(usize,String,usize,String)>> {
     let prefix = format!("ZEC-O1|{collection}|");
     let mut owned = HashSet::new();
     let mut successor: Option<String> = None;
@@ -114,6 +145,7 @@ fn verify_issuance(txs: &[ChainTx], fvk: &FullViewingKey, collection: &str) -> R
                 sealed = true;
                 successor = None;
                 println!("FINAL txid={} action={} height={}",tx.txid,index,tx.height);
+                if !strict { break; }
             } else {
                 let (number,hop)=marker.split_once('|').context("FAIL malformed memo")?;
                 let number: usize=number.parse()?;
@@ -131,11 +163,11 @@ fn verify_issuance(txs: &[ChainTx], fvk: &FullViewingKey, collection: &str) -> R
         }
     }
     ensure!(sealed && items.len()==3, "FAIL supply not sealed at exactly three");
-    for (number,txid,index,cmx) in items {
+    for (number,txid,index,cmx) in &items {
         println!("ITEM {number} VALID txid={txid} action={index} cmx={cmx}");
     }
-    println!("SUPPLY SEALED count=3");
-    Ok(())
+    if strict { println!("SUPPLY SEALED count=3"); } else { println!("MINT_PREFIX VALID count=3 through_FINAL; later mint audit is separate"); }
+    Ok(items)
 }
 
 fn main() -> Result<()> {
@@ -151,8 +183,14 @@ fn main() -> Result<()> {
             let ufvk=UnifiedFullViewingKey::decode(&network(),key.trim()).map_err(|e|anyhow!("Invalid UFVK: {e}"))?;
             let fvk=ufvk.orchard().context("Issuer key has no Orchard component")?;
             let txs=load_chain(&args[2],fvk)?;
-            verify_issuance(&txs,fvk,&args[4])
+            verify_issuance(&txs,fvk,&args[4],true).map(|_|())
         }
+        Some("proof") if args.len()==5 => ownership::verify_proof(&args[2],&args[3],&args[4]),
+        Some("link") if args.len()==6 => ownership::verify_link(&args[2],&args[3],&args[4],&args[5]),
+        #[cfg(feature = "sender")]
+        Some("transfer") if args.len()==9 => sender::transfer(&args[2],&args[3],&args[4],&args[5],args[6].parse()?,&args[7],&args[8]),
+        #[cfg(feature = "sender")]
+        Some("attest") if args.len()==10 => sender::attest(&args[2],&args[3],&args[4],&args[5],args[6].parse()?,&args[7],&args[8],&args[9]),
         _ => bail!("Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION"),
     }
 }
