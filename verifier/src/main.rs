@@ -1,3 +1,9 @@
+#[cfg(feature = "mainnet")]
+#[allow(dead_code)]
+mod lightwalletd;
+#[cfg(feature = "mainnet")]
+#[allow(dead_code)]
+mod network;
 mod ownership;
 #[cfg(feature = "sender")]
 mod sender;
@@ -546,8 +552,15 @@ fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("burn") => {
-            let ua = UnifiedAddress::from_receivers(Some(burn_address()), None, None, None)
-                .context("Burn encoding failed")?;
+            let ua = UnifiedAddress::from_receivers(
+                Some(burn_address()),
+                None,
+                None,
+                None,
+                #[cfg(feature = "mainnet")]
+                None,
+            )
+            .context("Burn encoding failed")?;
             println!("{}", ua.encode(&network()));
             Ok(())
         }
@@ -587,6 +600,21 @@ fn main() -> Result<()> {
             &args[10],
             args.get(11).map(String::as_str),
         ),
+        #[cfg(feature = "sender")]
+        Some("attack-double-spend") if (args.len() == 11 || args.len() == 12) => {
+            sender::attack_double_spend(
+                &args[2],
+                &args[3],
+                &args[4],
+                &args[5],
+                args[6].parse()?,
+                &args[7],
+                &args[8],
+                &args[9],
+                &args[10],
+                args.get(11).map(String::as_str),
+            )
+        }
         #[cfg(feature = "sender")]
         Some("attest") if args.len() == 11 || args.len() == 12 => sender::attest(
             &args[2],
@@ -644,7 +672,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "trustee")]
         Some("fund-extract") if args.len() == 4 => trustee::extract(&args[2], &args[3]),
         _ => bail!(
-            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL]"
+            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
         ),
     }
 }

@@ -26,8 +26,11 @@ incrementalmerkletree = { version = "0.9", features = ["legacy-api"], optional =
 zcash_proofs = { version = "=0.31.0-pre.2", features = ["bundled-prover"], optional = true }
 transparent = { package = "zcash_transparent", version = "=0.11.0-pre.2", optional = true }
 pczt = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818", features = ["zcp-builder", "io-finalizer", "prover", "signer", "tx-extractor"], optional = true }
+zcash_client_backend = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818", default-features = false, features = ["orchard", "lightwalletd-tonic-transport", "lightwalletd-tonic-tls-webpki-roots"], optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
 
 [features]
+mainnet = ["dep:tokio", "dep:zcash_client_backend"]
 trustee = ["sender", "dep:pczt"]
 sender = ["dep:age", "dep:bip0039", "dep:zeroize", "dep:toml", "dep:rand", "dep:zip32", "dep:pasta_curves", "dep:incrementalmerkletree", "dep:zcash_proofs", "dep:transparent", "dep:pczt", "zcash_keys/std", "zcash_primitives/circuits", "zcash_primitives/std", "zcash_primitives/multicore"]
 

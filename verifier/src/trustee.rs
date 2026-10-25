@@ -47,6 +47,8 @@ pub(crate) fn import(input: &str, output: &str, address_output: &str) -> Result<
         None,
         None,
         None,
+        #[cfg(feature = "mainnet")]
+        None,
     )
     .context("Cannot encode fund address")?
     .encode(&network());

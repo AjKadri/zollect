@@ -32,17 +32,26 @@ LINK VALID item=1 spent_nullifier=f46b497de342c2906046509cd98d41d820085eb7dafde7
 ## O3
 
 ```text
-COMMAND sendrawtransaction ORIGINAL_TRANSFER
-OUTPUT transaction is already in state
-PASS: duplicate-spend rebroadcast rejected
+COMMAND carrier-verifier attack-double-spend RPC_URL ALICE_WALLET ALICE_ID eb7b2e2b179da5eee9383f8a9dda5c61af7e62ccc4b097b19326bc92bfe36935 0 FORGED_VAULT DOUBLE_SPEND_RAW FUNDING_WALLET FUNDING_ID
+ATTACK_FIXTURE allow_spent_carrier=true
+CONSTRUCTION candidate=1 carrier_input_action=1 requested_successor_action=1
+READY txid=912b65f78d22d08b28f474c5914ddb51418af240b60be168499c0b7133ef68c1 same_action=1 collection=carrier-20261024 item=1 hop=1 raw_file=DOUBLE_SPEND_RAW
 
-COMMAND carrier-verifier link RPC_URL ISSUER_UFVK ALICE_OLD_PROOF FORGED_ITEM1_PROOF
-Error: FAIL successor hop is not previous hop plus one
-PASS
+COMMAND sendrawtransaction DOUBLE_SPEND_RAW
+{"jsonrpc":"1.0","id":"o3-double-spend-v2","result":null,"error":{"code":-25,"message":"failed to validate tx: WtxId(\"private\"), error: transaction did not pass consensus validation: could not contextually validate transaction on best chain: ironwood double-spend: duplicate nullifier: Nullifier(Nullifier(0x06c84f780c95ec6622e7fddab75e0820d8418dd99c50466090c242e37d496bf4)), in finalized state: false"}}
+PASS: competing spend rejected because the nullifier was already recorded
+
+COMMAND carrier-verifier attest RPC_URL FORGED_WALLET FORGED_ID b9f2ee66943748ba80249577e6d14746d5826b585bc69f6d74249d6e4ad9f050 1 CHALLENGE FORGED_HOP1_PROOF carrier-20261024 1
+CONTROL_PROOF collection=carrier-20261024 item=1 hop=1 txid=b9f2ee66943748ba80249577e6d14746d5826b585bc69f6d74249d6e4ad9f050 action=1
+
+COMMAND carrier-verifier link RPC_URL ISSUER_UFVK ALICE_OLD_PROOF FORGED_HOP1_PROOF
+CHAIN test height=524 hash=31a3c51ac6a6eac6d323dcf9b7a6fe6fb81e409693ab1fb6b76e964e819e694f
+Error: FAIL successor is not in the spent carrier's Action
+FAIL: forged successor had the correct next hop but failed same-Action binding
 
 COMMAND carrier-verifier proof RPC_URL ITEM2_HISTORY_PROOF CHALLENGE
 HELD collection=carrier-20261024 item=2 hop=0 txid=65f99494522c2300e0cd2a60d4af6a05f730c536ea9db2eaba1b3aa707e7d169 action=1 cmx=401504da861c8e4ecd187f528916570d8c5aa2e000dc3a3d80e4f4c1524f331d nullifier=37cb0c76d96a59a6c4ca4ee97c6125c508f99745e0429e13f05db024830eaf02 control_signature=VALID
-FAIL: expected SPENT, observed HELD
+TEST-DEFINITION ERROR: O3 item-2-history asked for SPENT, but the supplied history leaves item 2 HELD; O4 covers SPENT with BOB_OLD_PROOF
 
 COMMAND carrier-verifier proof RPC_URL CAROL_PROOF CHALLENGE SECONDARY_RPC_URL
 Error: FAIL RPC_SERVER_DISAGREEMENT primary_height=484 primary_hash=27d89be88537f4aeea53b3027cbf9e0eb55f6c3091f7fbb4647724e1b5321b00 secondary_height=483 secondary_hash=e3289003f000a72a2e7d88ba118bbd8d2e5878c35758ec4db07ca31e26f46272

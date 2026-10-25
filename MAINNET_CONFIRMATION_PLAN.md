@@ -6,7 +6,9 @@ Status: NOT RUN. This document requires explicit approval before any mainnet wal
 
 Use two independently configured public mainnet light-wallet servers. Before each scan or signing step, compare their chain height, tip hash, relevant compact-block or transaction data, and wallet scan result. Refuse the operation if either server disagrees, lags, fails, or returns incomplete data. Do not log seeds, spending keys, key shares, encrypted wallet files, or private PCZT fields.
 
-The current sender build is regtest-only. Before approval, add a reviewed mainnet network configuration and a lightwalletd transport adapter. Do not bypass the regtest guard or substitute a public server without that review.
+The sender build remains regtest-only. The offline mainnet boundary is now present behind the `mainnet` feature: `MainnetConfig` uses the pinned `MAIN_NETWORK` parameters, and `MainnetLightwalletd` uses the pinned librustzcash lightwalletd gRPC client with verified HTTPS endpoints. It obtains `GetLightdInfo` and `GetLatestBlock` from both servers, refuses a chain-name, height or tip-hash mismatch, compares full transaction responses before returning them, and only sends after a consistent snapshot. The adapter is not wired into the normal CLI yet, and no mainnet endpoint has been contacted. The existing checker still refuses a `main` chain without a distinct secondary server.
+
+The adapter rejects plaintext endpoints, endpoint credentials, duplicate endpoints and incomplete tip data. Mainnet feature compilation and offline endpoint-validation tests are allowed before approval. Wallet scans, transaction fetches, signing, fee estimation and broadcasts remain approval-gated.
 
 ## Three operations
 

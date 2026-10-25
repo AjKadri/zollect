@@ -90,6 +90,75 @@ pub(crate) fn transfer(
     funding_identity: &str,
     secondary_url: Option<&str>,
 ) -> Result<()> {
+    transfer_inner(
+        url,
+        vault_wallet,
+        vault_identity,
+        origin,
+        origin_action,
+        recipient_address,
+        output,
+        funding_wallet,
+        funding_identity,
+        secondary_url,
+        true,
+    )
+}
+
+fn ensure_regtest_chain(url: &str) -> Result<()> {
+    let chain = rpc(url, "getblockchaininfo", json!([]))?;
+    ensure!(
+        chain["chain"].as_str() == Some("test"),
+        "Only regtest RPC endpoints are accepted by the sender"
+    );
+    Ok(())
+}
+
+pub(crate) fn attack_double_spend(
+    url: &str,
+    vault_wallet: &str,
+    vault_identity: &str,
+    origin: &str,
+    origin_action: usize,
+    recipient_address: &str,
+    output: &str,
+    funding_wallet: &str,
+    funding_identity: &str,
+    secondary_url: Option<&str>,
+) -> Result<()> {
+    println!("ATTACK_FIXTURE allow_spent_carrier=true");
+    transfer_inner(
+        url,
+        vault_wallet,
+        vault_identity,
+        origin,
+        origin_action,
+        recipient_address,
+        output,
+        funding_wallet,
+        funding_identity,
+        secondary_url,
+        false,
+    )
+}
+
+fn transfer_inner(
+    url: &str,
+    vault_wallet: &str,
+    vault_identity: &str,
+    origin: &str,
+    origin_action: usize,
+    recipient_address: &str,
+    output: &str,
+    funding_wallet: &str,
+    funding_identity: &str,
+    secondary_url: Option<&str>,
+    reject_spent_carrier: bool,
+) -> Result<()> {
+    ensure_regtest_chain(url)?;
+    if let Some(secondary_url) = secondary_url {
+        ensure_regtest_chain(secondary_url)?;
+    }
     let vault_usk = spending_key(vault_wallet, vault_identity)?;
     let vault_fvk = orchard::keys::FullViewingKey::from(vault_usk.orchard());
     let funding_usk = spending_key(funding_wallet, funding_identity)?;
@@ -132,10 +201,15 @@ pub(crate) fn transfer(
         .iter()
         .flat_map(|t| t.nullifiers.iter().cloned())
         .collect();
-    ensure!(
-        !spent.contains(&hex::encode(carrier.note.nullifier(&vault_fvk).to_bytes())),
-        "Carrier already spent"
-    );
+    let carrier_nullifier = hex::encode(carrier.note.nullifier(&vault_fvk).to_bytes());
+    if reject_spent_carrier {
+        ensure!(!spent.contains(&carrier_nullifier), "Carrier already spent");
+    } else {
+        ensure!(
+            spent.contains(&carrier_nullifier),
+            "Attack fixture requires an already-spent carrier"
+        );
+    }
     let (fee_tx, fee_index, fee_note) = funding_txs
         .iter()
         .flat_map(|t| t.notes.iter().map(move |(i, n)| (t, *i, n)))
