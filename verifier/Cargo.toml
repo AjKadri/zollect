@@ -29,7 +29,7 @@ pczt = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661
 
 [features]
 trustee = ["sender", "dep:pczt"]
-sender = ["dep:age", "dep:bip0039", "dep:zeroize", "dep:toml", "dep:rand", "dep:zip32", "dep:pasta_curves", "dep:incrementalmerkletree", "dep:zcash_proofs", "dep:transparent", "zcash_keys/std", "zcash_primitives/circuits", "zcash_primitives/std", "zcash_primitives/multicore"]
+sender = ["dep:age", "dep:bip0039", "dep:zeroize", "dep:toml", "dep:rand", "dep:zip32", "dep:pasta_curves", "dep:incrementalmerkletree", "dep:zcash_proofs", "dep:transparent", "dep:pczt", "zcash_keys/std", "zcash_primitives/circuits", "zcash_primitives/std", "zcash_primitives/multicore"]
 
 [patch.crates-io]
 zcash_keys = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }

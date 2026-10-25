@@ -1,0 +1,73 @@
+# Public evidence
+
+Sanitized commands and checker outputs only. Local paths, machine details and keys are omitted.
+
+## O1
+
+```text
+COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK carrier-20261024
+FINAL txid=c30b0bbbedaa51c5466133da0fcd51a58af58f996596f3f24d2532855805ff74 action=0
+ITEM 1 VALID txid=eb7b2e2b179da5eee9383f8a9dda5c61af7e62ccc4b097b19326bc92bfe36935 action=0
+ITEM 2 VALID txid=65f99494522c2300e0cd2a60d4af6a05f730c536ea9db2eaba1b3aa707e7d169 action=1
+ITEM 3 VALID txid=5554a30d611b5421fa799a36b84e190b6928e21ebf2e232fce4a2f5abbf9b603 action=1
+SUPPLY SEALED count=3
+
+COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK carrier-20261024
+Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51d10d16aafbe007a302
+```
+
+## O2
+
+```text
+COMMAND carrier-verifier proof RPC_URL ALICE_PROOF CHALLENGE
+SPENT item=1 txid=eb7b2e2b179da5eee9383f8a9dda5c61af7e62ccc4b097b19326bc92bfe36935 action=0 nullifier=f46b497de342c2906046509cd98d41d820085eb7dafde72266ec950c784fc806 spending_txid=81544880f9e1c5d734d3589d98438a8a104d45e39e0723af0f85038ff659040d
+
+COMMAND carrier-verifier proof RPC_URL BOB_PROOF CHALLENGE
+HELD item=1 txid=81544880f9e1c5d734d3589d98438a8a104d45e39e0723af0f85038ff659040d action=0 cmx=fe2c6c96c6a009a61a48e41e3b356ec41a0a9bb5ea4169edbf05799ec887b908 nullifier=abc200105f3b3654c8aa2928713b598a38e41f25146ef71644d39b651363c13e control_signature=VALID
+
+COMMAND carrier-verifier link RPC_URL ISSUER_UFVK ALICE_PROOF BOB_PROOF
+LINK VALID item=1 spent_nullifier=f46b497de342c2906046509cd98d41d820085eb7dafde72266ec950c784fc806 successor_txid=81544880f9e1c5d734d3589d98438a8a104d45e39e0723af0f85038ff659040d same_action=0 memo=ZEC-O1|carrier-20261024|1|1
+```
+
+## O3
+
+```text
+COMMAND sendrawtransaction ORIGINAL_TRANSFER
+OUTPUT transaction is already in state
+PASS: duplicate-spend rebroadcast rejected
+
+COMMAND carrier-verifier link RPC_URL ISSUER_UFVK ALICE_OLD_PROOF FORGED_ITEM1_PROOF
+Error: FAIL successor hop is not previous hop plus one
+PASS
+
+COMMAND carrier-verifier proof RPC_URL ITEM2_HISTORY_PROOF CHALLENGE
+HELD collection=carrier-20261024 item=2 hop=0 txid=65f99494522c2300e0cd2a60d4af6a05f730c536ea9db2eaba1b3aa707e7d169 action=1 cmx=401504da861c8e4ecd187f528916570d8c5aa2e000dc3a3d80e4f4c1524f331d nullifier=37cb0c76d96a59a6c4ca4ee97c6125c508f99745e0429e13f05db024830eaf02 control_signature=VALID
+FAIL: expected SPENT, observed HELD
+
+COMMAND carrier-verifier proof RPC_URL CAROL_PROOF CHALLENGE SECONDARY_RPC_URL
+Error: FAIL RPC_SERVER_DISAGREEMENT primary_height=484 primary_hash=27d89be88537f4aeea53b3027cbf9e0eb55f6c3091f7fbb4647724e1b5321b00 secondary_height=483 secondary_hash=e3289003f000a72a2e7d88ba118bbd8d2e5878c35758ec4db07ca31e26f46272
+PASS
+```
+
+## O4
+
+```text
+COMMAND carrier-verifier sale-prepare RPC_URL SELLER_PROOF BUYER_FUNDING_WALLET BUYER_FUNDING_ID BUYER_VAULT SELLER_PAYMENT 100000 SALE_PCZT
+SALE_PCZT_READY collection=carrier-20261024 item=1 carrier_action=1 buyer_action=0 price_zat=100000 buyer_signature=APPLIED private_buyer_fields=REDACTED
+
+COMMAND carrier-verifier sale-sign RPC_URL SELLER_PROOF SELLER_WALLET SELLER_ID SELLER_PAYMENT 100000 1 0 SALE_PCZT SALE_RAW
+SALE_CHECK payment=VERIFIED price_zat=100000 fee_zat=15000 buyer_signature=VERIFIED seller_signature=EMPTY
+ATOMIC_SALE txid=5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31 carrier_action=1 buyer_action=0 payment_zat=100000 fee_zat=15000
+
+COMMAND sendrawtransaction SALE_RAW
+OUTPUT 5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31
+
+COMMAND carrier-verifier proof RPC_URL BOB_OLD_PROOF CHALLENGE
+SPENT collection=carrier-20261024 item=1 hop=1 txid=81544880f9e1c5d734d3589d98438a8a104d45e39e0723af0f85038ff659040d action=0 spending_txid=5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31
+
+COMMAND carrier-verifier proof RPC_URL CAROL_PROOF CHALLENGE
+HELD collection=carrier-20261024 item=1 hop=2 txid=5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31 action=1 cmx=bc73a8b835db737183a880c853bebfd70e5a87adc4f7af9df960fca230695f05 nullifier=1287f3e6c923cac3dccde0521834a6ef69f0f927745ea1daa294bb2316a70430 control_signature=VALID
+
+COMMAND carrier-verifier link RPC_URL ISSUER_UFVK BOB_OLD_PROOF CAROL_PROOF
+LINK VALID collection=carrier-20261024 item=1 spent_nullifier=abc200105f3b3654c8aa2928713b598a38e41f25146ef71644d39b651363c13e successor_txid=5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31 same_action=1 memo=ZEC-O1|carrier-20261024|1|2
+```

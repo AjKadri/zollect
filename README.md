@@ -6,17 +6,19 @@ Build the independent verifier:
 
 ```sh
 cargo build --manifest-path verifier/Cargo.toml --release --locked
-verifier/target/release/zecathon-carrier-verifier issuance RPC_URL public/issuer.ufvk carrier-20261024
+verifier/target/release/zecathon-carrier-verifier issuance RPC_URL public/issuer.ufvk COLLECTION [SECONDARY_RPC_URL]
 ```
 
-It reads chain data and the published issuer viewing key, follows issuer-controlled minting inputs, checks three distinct zero-value vault notes, and checks FINAL sealing. A post-FINAL issuer mint returns FAIL. The recorded regtest chain includes that deliberate attack.
+The independent checker accepts any collection id, item number and hop count. It follows issuer-controlled minting inputs, requires zero-value item notes in distinct vault addresses, and checks FINAL sealing without a fixed item count. A post-FINAL issuer mint returns FAIL.
 
 The burn receiver is derived from public hash bytes without generating a spending key. Its unspendability relies on the difficulty of finding corresponding secret key material.
 
 Publishing the issuer viewing key reveals issuer-readable addresses, values, memos and history. This is feasibility code, not a production privacy claim. See [CREDITS.md](CREDITS.md).
 
-O2 adds `proof RPC_URL PROOF_FILE CHALLENGE` and `link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF`. Proofs contain owner viewing keys and stay on the VPS in the recorded experiment. The optional `sender` feature builds signing/transfer commands for separate single-owner processes. It is not used for F1 trustee shares.
+O2 adds `proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL]` and `link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL]`. Proofs keep the challenge signature and may include the vault viewing key. The checker requires exactly one item and no other note at that vault address. Fees come from a separate funding-wallet input in the same transaction. Supplying a second RPC endpoint makes the checker refuse disagreement in height, tip hash or scanned transaction data.
 
-Live regtest observations cover issuance, rejection of a fourth mint, and an Alice-to-Bob transfer with Alice SPENT, Bob HELD and same-Action linkage. Further attack and privacy experiments remain outstanding.
+The optional `sender` feature builds signing, transfer and two-party atomic-sale commands for separate single-owner processes. `sale-prepare` applies the buyer funding signature and strips buyer private fields. `sale-sign` verifies the payment and standard ZIP-317 fee before adding the seller carrier signature.
 
-F1 used three separate trustee processes for 2-of-3 DKG. Trustees 1 and 2 produced a mined payout. Trustee 1 alone received `IncorrectNumberOfCommitments`, and trustee 2's approval guard refused a substituted recipient. See [F1 setup](f1/README.md). Mainnet was not used. O3/O4 and F2/F3 remain untested.
+Regtest evidence covers issuance, rejection of a fourth mint, Alice-to-Bob transfer, atomic sale, duplicate-spend rebroadcast rejection, forged-successor rejection and lagging-server refusal. The literal item-2-history O3 row remains FAIL because that note was still HELD in the experiment chain. See [PUBLIC_EVIDENCE.md](PUBLIC_EVIDENCE.md) for judge-safe outputs and [MAINNET_CONFIRMATION_PLAN.md](MAINNET_CONFIRMATION_PLAN.md) for the approval-gated public-server plan.
+
+F1 used three separate trustee processes for 2-of-3 DKG. Trustees 1 and 2 produced a mined payout. Trustee 1 alone received `IncorrectNumberOfCommitments`, and trustee 2's approval guard refused a substituted recipient. See [F1 setup](f1/README.md). Mainnet was not used.
