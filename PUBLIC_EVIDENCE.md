@@ -80,3 +80,10 @@ HELD collection=carrier-20261024 item=1 hop=2 txid=5cc0d2b86f4f9eeb324a002527717
 COMMAND carrier-verifier link RPC_URL ISSUER_UFVK BOB_OLD_PROOF CAROL_PROOF
 LINK VALID collection=carrier-20261024 item=1 spent_nullifier=abc200105f3b3654c8aa2928713b598a38e41f25146ef71644d39b651363c13e successor_txid=5cc0d2b86f4f9eeb324a0025277171348935c20f47e6168e132137597cde8b31 same_action=1 memo=ZEC-O1|carrier-20261024|1|2
 ```
+
+## M1 read-only mainnet consistency
+
+```text
+COMMAND carrier-verifier mainnet-snapshot https://na.zec.rocks:443 https://eu.zec.rocks:443
+MAINNET CONSISTENT chain=main height=3530459 tip_hash=9a22339893b5176d878fb4ad94676de6d7eb2106c0cdcd24dd5e020000000000
+```

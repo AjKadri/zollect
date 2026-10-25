@@ -1,6 +1,6 @@
 # Mainnet confirmation plan
 
-Status: NOT RUN. This document requires explicit approval before any mainnet wallet or light-wallet request is made.
+Status: READ-ONLY M1 CONSISTENCY CHECK ONLY. Mainnet wallet operations remain NOT RUN and require explicit approval.
 
 ## Gate
 
@@ -9,6 +9,8 @@ Use two independently configured public mainnet light-wallet servers. Before eac
 The sender build remains regtest-only. The offline mainnet boundary is now present behind the `mainnet` feature: `MainnetConfig` uses the pinned `MAIN_NETWORK` parameters, and `MainnetLightwalletd` uses the pinned librustzcash lightwalletd gRPC client with verified HTTPS endpoints. It obtains `GetLightdInfo` and `GetLatestBlock` from both servers, refuses a chain-name, height or tip-hash mismatch, compares full transaction responses before returning them, and only sends after a consistent snapshot. The adapter is not wired into the normal CLI yet, and no mainnet endpoint has been contacted. The existing checker still refuses a `main` chain without a distinct secondary server.
 
 The adapter rejects plaintext endpoints, endpoint credentials, duplicate endpoints and incomplete tip data. Mainnet feature compilation and offline endpoint-validation tests are allowed before approval. Wallet scans, transaction fetches, signing, fee estimation and broadcasts remain approval-gated.
+
+The read-only M1 check is `carrier-verifier mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS`. It prints only the matching chain name, height and tip hash. It does not scan a wallet, sign, estimate fees or broadcast.
 
 ## Three operations
 

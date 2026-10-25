@@ -133,6 +133,7 @@ pub(crate) struct MainnetLightwalletd {
 
 impl MainnetLightwalletd {
     pub(crate) fn new(primary: &str, secondary: &str) -> Result<Self> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let config = MainnetConfig;
         config.validate_chain_name(MAINNET_CHAIN_NAME)?;
         let primary = Endpoint::new(primary)?;

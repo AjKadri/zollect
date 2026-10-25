@@ -1,6 +1,8 @@
 # Local collaboration and experiment runtime state
 .agent/
 .runtime/
+AGENTS.md
+plan.md
 .secrets/
 .env
 .env.*

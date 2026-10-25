@@ -587,6 +587,18 @@ fn main() -> Result<()> {
             &args[5],
             args.get(6).map(String::as_str),
         ),
+        #[cfg(feature = "mainnet")]
+        Some("mainnet-snapshot") if args.len() == 4 => {
+            let servers = lightwalletd::MainnetLightwalletd::new(&args[2], &args[3])?;
+            let snapshot = servers.consistent_snapshot()?;
+            println!(
+                "MAINNET CONSISTENT chain={} height={} tip_hash={}",
+                snapshot.chain_name,
+                snapshot.height,
+                hex::encode(snapshot.tip_hash)
+            );
+            Ok(())
+        }
         #[cfg(feature = "sender")]
         Some("transfer") if (args.len() == 11 || args.len() == 12) => sender::transfer(
             &args[2],
@@ -672,7 +684,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "trustee")]
         Some("fund-extract") if args.len() == 4 => trustee::extract(&args[2], &args[3]),
         _ => bail!(
-            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
+            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
         ),
     }
 }
