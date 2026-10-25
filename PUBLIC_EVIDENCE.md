@@ -101,3 +101,33 @@ Caused by: code: 'Some requested entity was not found', message: "Transaction no
 ```
 
 Stage (a): FAIL. No item mint or seal broadcast followed.
+
+## M2 monitoring stopped on server disagreement
+
+```text
+TXID 89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16
+BROADCAST_RESPONSE error_code=0
+
+CHECK t+4m
+SERVER_CHECK transaction not found in mempool or best chain
+EXPLORER_CHECK HTTP_CODE=403 BYTES=162
+
+CHECK t+6m
+SERVER_CHECK transaction not found in mempool or best chain
+EXPLORER_CHECK HTTP_CODE=403 BYTES=162
+
+CHECK t+8m
+SERVER_CHECK transaction not found in mempool or best chain
+EXPLORER_CHECK HTTP_CODE=403 BYTES=162
+
+CHECK t+10m
+SERVER_CHECK transaction not found in mempool or best chain
+EXPLORER_CHECK HTTP_CODE=403 BYTES=162
+
+CHECK t+12m
+SERVER_CHECK FAIL LIGHTWALLETD_INCOMPLETE_INFO info_height=3530594 tip_height=3530595
+SERVER_CHECK FAIL LIGHTWALLETD_INCOMPLETE_INFO info_height=3530595 tip_height=3530594
+EXPLORER_CHECK HTTP_CODE=403 BYTES=162
+```
+
+Stage (a): FAIL. Monitoring stopped at the first server disagreement. No rebroadcast or funding-note spend followed.
