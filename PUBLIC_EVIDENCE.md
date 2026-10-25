@@ -87,3 +87,17 @@ LINK VALID collection=carrier-20261024 item=1 spent_nullifier=abc200105f3b3654c8
 COMMAND carrier-verifier mainnet-snapshot https://na.zec.rocks:443 https://eu.zec.rocks:443
 MAINNET CONSISTENT chain=main height=3530459 tip_hash=9a22339893b5176d878fb4ad94676de6d7eb2106c0cdcd24dd5e020000000000
 ```
+
+## M2 stage (a) stopped
+
+```text
+COMMAND carrier-verifier mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY 3530540 carrier-m2 BOOTSTRAP ISSUER_BOOTSTRAP_ADDRESS 0
+FEE fee_zat=10000 running_total_before_zat=0 projected_total_zat=10000 cap_zat=200000
+BROADCAST txid=89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16 fee_zat=10000 running_total_zat=10000 stage=bootstrap
+
+COMMAND carrier-verifier mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS 89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16
+Error: lightwalletd transaction request failed
+Caused by: code: 'Some requested entity was not found', message: "Transaction not found in mempool or best chain"
+```
+
+Stage (a): FAIL. No item mint or seal broadcast followed.
