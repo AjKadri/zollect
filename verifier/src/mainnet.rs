@@ -47,6 +47,27 @@ use zeroize::Zeroizing;
 const M2_CAP_ZAT: u64 = 200_000;
 const M2_TX_FEE_CAP_ZAT: u64 = 20_000;
 const ISSUER_BOOTSTRAP_ZAT: u64 = 10_000;
+const SALE_EXPIRY_BLOCKS_AHEAD: u64 = 100;
+const SALE_MIN_EXPIRY_REMAINING: u64 = 15;
+
+fn check_sale_expiry_window(
+    servers: &MainnetLightwalletd,
+    expiry_height: u32,
+    stage: &str,
+) -> Result<()> {
+    let snapshot = servers.consistent_snapshot()?;
+    let blocks_remaining = u64::from(expiry_height).saturating_sub(snapshot.height);
+    println!(
+        "EXPIRY_GUARD stage={stage} current_height={} expiry_height={expiry_height} blocks_remaining={blocks_remaining} minimum_remaining={SALE_MIN_EXPIRY_REMAINING}",
+        snapshot.height
+    );
+    ensure!(
+        blocks_remaining >= SALE_MIN_EXPIRY_REMAINING,
+        "ABORT sale expiry guard stage={stage} current_height={} expiry_height={expiry_height} blocks_remaining={blocks_remaining} minimum_remaining={SALE_MIN_EXPIRY_REMAINING}",
+        snapshot.height
+    );
+    Ok(())
+}
 
 fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
     let config: toml::Value =
@@ -1063,6 +1084,12 @@ pub(crate) fn sale_prepare(
     );
     let snapshot = servers.consistent_snapshot()?;
     let height = block_height(snapshot.height)?;
+    let expiry_height = BlockHeight::from_u32(u32::try_from(
+        snapshot
+            .height
+            .checked_add(SALE_EXPIRY_BLOCKS_AHEAD)
+            .context("Sale expiry height overflow")?,
+    )?);
     let (seller_txs, buyer_txs, initial_tree) =
         load_chain_pair(&servers, birthday, &seller_fvk, &buyer_fvk)?;
     let seller_tx = seller_txs
@@ -1240,7 +1267,8 @@ pub(crate) fn sale_prepare(
                 orchard_padding: BundlePadding::DEFAULT,
                 ironwood_padding: BundlePadding::DEFAULT,
             },
-        );
+        )
+        .with_expiry_height(expiry_height);
         builder
             .add_ironwood_spend::<Infallible>(
                 seller_fvk.clone(),
@@ -1367,11 +1395,12 @@ pub(crate) fn sale_prepare(
                 "buyer_action": buyer_action,
                 "price_zat": price,
                 "fee_zat": final_fee,
+                "expiry_height": u32::from(expiry_height),
             }))?,
         )?;
         println!(
-            "SALE_PCZT_READY collection={} item={} carrier_action={} buyer_action={} price_zat={} fee_zat={} projected_total_zat={} buyer_signature=APPLIED private_buyer_fields=REDACTED pczt_file={output}",
-            collection, item, carrier_action, buyer_action, price, final_fee, projected
+            "SALE_PCZT_READY collection={} item={} carrier_action={} buyer_action={} price_zat={} fee_zat={} projected_total_zat={} expiry_height={} buyer_signature=APPLIED private_buyer_fields=REDACTED pczt_file={output}",
+            collection, item, carrier_action, buyer_action, price, final_fee, projected, u32::from(expiry_height)
         );
         return Ok(());
     }
@@ -1606,6 +1635,8 @@ pub(crate) fn sale_sign(
     println!(
         "FEE fee_zat={final_fee} sale_price_zat={price} running_total_before_zat={running_total} projected_total_zat={projected} tx_cap_zat={M2_TX_FEE_CAP_ZAT} cap_zat={M2_CAP_ZAT}"
     );
+    let pczt_expiry_height = *pczt.global().expiry_height();
+    check_sale_expiry_window(&servers, pczt_expiry_height, "pre-sign")?;
     let mut signer = Signer::new(pczt).map_err(|e| anyhow!("Seller signer setup: {e:?}"))?;
     signer
         .sign_ironwood(
@@ -1617,6 +1648,14 @@ pub(crate) fn sale_sign(
     let tx = TransactionExtractor::new(signer.finish())
         .extract(UnwrapErr(SysRng))
         .map_err(|e| anyhow!("Sale extraction: {e:?}"))?;
+    let tx_expiry_height: u32 = tx.expiry_height().into();
+    ensure!(
+        tx_expiry_height == pczt_expiry_height,
+        "Sale expiry changed during signing pczt_expiry_height={} tx_expiry_height={}",
+        pczt_expiry_height,
+        tx_expiry_height
+    );
+    check_sale_expiry_window(&servers, tx_expiry_height, "pre-broadcast")?;
     let mut raw = Vec::new();
     tx.write(&mut raw)?;
     fs::write(output, raw.clone())?;
