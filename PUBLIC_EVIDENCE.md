@@ -343,6 +343,61 @@ VERIFY_TIMING mode=verify-any-item tx_count=5 status=FAIL elapsed_ms=8077
 
 The seal is mined, but the issuance checker did not produce the required three `VALID` lines and `SUPPLY SEALED count=3`. No transfer or sale was attempted.
 
+## lagos-lights atomic sale
+
+Date: 2026-10-26 UTC.
+
+```text
+COMMAND carrier-verifier-prepare-only mainnet-sale-prepare PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF BUYER_FUNDING_WALLET BUYER_FUNDING_IDENTITY BUYER_VAULT SELLER_PAYMENT 3531306 20000 85000 SALE_PCZT
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 sale_price_zat=20000 running_total_before_zat=85000 projected_total_zat=120000 tx_cap_zat=20000 cap_zat=200000
+SALE_PCZT_READY collection=lagos-lights item=2 carrier_action=1 buyer_action=0 price_zat=20000 fee_zat=15000 projected_total_zat=120000 expiry_height=3531800 buyer_signature=APPLIED private_buyer_fields=REDACTED
+```
+
+```text
+COMMAND carrier-verifier mainnet-sale-sign PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF SELLER_WALLET SELLER_IDENTITY SELLER_PAYMENT 3531306 20000 1 0 SALE_PCZT SALE_RAW 85000
+FEE_FINAL fee_zat=15000 actions=3 buyer_signature=VERIFIED
+FEE fee_zat=15000 sale_price_zat=20000 running_total_before_zat=85000 projected_total_zat=120000 tx_cap_zat=20000 cap_zat=200000
+EXPIRY_GUARD stage=pre-sign current_height=3531731 expiry_height=3531800 blocks_remaining=69 minimum_remaining=15
+EXPIRY_GUARD stage=pre-broadcast current_height=3531731 expiry_height=3531800 blocks_remaining=69 minimum_remaining=15
+ATOMIC_SALE_READY txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 carrier_action=1 buyer_action=0 payment_zat=20000 fee_zat=15000
+BROADCAST txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 fee_zat=15000 running_total_zat=120000 stage=sale collection=lagos-lights item=2 hop=2
+```
+
+```text
+COMMAND carrier-verifier mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0
+MAINNET TRANSACTION txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 height=3531732 bytes=12322
+```
+
+```text
+COMMAND carrier-verifier mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS TOBI_PROOF CHALLENGE SALE_CHAIN_TXID_LIST
+SPENT collection=lagos-lights item=2 hop=1 txid=2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 action=1 nullifier=ffacce3dbeb13bb5c5129b516e2b1a2ddf27b5381d0809e4dc5dab974419fa3b spending_txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0
+VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=1398
+```
+
+```text
+COMMAND carrier-verifier mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS KEMI_PROOF CHALLENGE SALE_CHAIN_TXID_LIST
+HELD collection=lagos-lights item=2 hop=2 txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 action=1 cmx=0fea744310c8f3f0389efe73f4a93964dd6b9e1e9ca319a3d7133d54050cb91a nullifier=b707053ca2bc723e9e5f9c89ec80a9ffd188876151fa7304da7578b7b7e9d024 control_signature=VALID
+VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890
+```
+
+```text
+COMMAND carrier-verifier mainnet-link PRIMARY_HTTPS SECONDARY_HTTPS TOBI_PROOF KEMI_PROOF CHALLENGE SALE_CHAIN_TXID_LIST
+LINK VALID collection=lagos-lights item=2 spent_nullifier=ffacce3dbeb13bb5c5129b516e2b1a2ddf27b5381d0809e4dc5dab974419fa3b successor_txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 same_action=1 memo=ZEC-O1|lagos-lights|2|2
+VERIFY_TIMING mode=link tx_count=7 elapsed_ms=1548
+```
+
+```text
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK lagos-lights 2 MINT_TXID_LIST
+FINAL txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec action=0 height=3531330
+ITEM 1 VALID txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda action=2 cmx=6a44a03186657519c928c068212550f53313518890dc5846062320aa89e09e1d
+ITEM 2 VALID txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 action=2 cmx=4efd3afe51ec24ee0eacff5af02c654c3bbbdcf5039fb6fdea3d1a6506eb4a19
+ITEM 3 VALID txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 action=0 cmx=6de2c6b676700d2c1b2a93cf08dfbcdf6ae8056756071b69b16a6df51c546c20
+SUPPLY SEALED count=3
+VERIFY_TIMING mode=verify-any-item tx_count=6 elapsed_ms=1341
+```
+
 Approved consistency change: with aligned tips, a single server whose `info_height` is exactly one block from its own tip is retried after 3 seconds, up to 3 retries. Larger or persistent gaps still refuse.
 
 ## Issuance checker diagnosis and regression result
