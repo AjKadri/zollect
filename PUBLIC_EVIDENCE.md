@@ -2,6 +2,12 @@
 
 Sanitized commands and checker outputs only. Local paths, machine details and keys are omitted.
 
+## Superseded mainnet collection
+
+```text
+carrier-m2: unsealed; first seal used a builder bug, fixed in 69ae6b6; superseded by lagos-lights
+```
+
 ## O1
 
 ```text
@@ -14,6 +20,69 @@ SUPPLY SEALED count=3
 
 COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK carrier-20261024
 Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51d10d16aafbe007a302
+```
+
+## Replacement mainnet collection: lagos-lights
+
+```text
+COMMAND carrier-verifier mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY lagos-lights BOOTSTRAP ISSUER_BOOTSTRAP_ADDRESS 0
+FEE fee_zat=10000 running_total_before_zat=0 projected_total_zat=10000 cap_zat=200000
+BROADCAST txid=7f1d30c2875daa7b1e2dacfb97004c86a443c3d75a6b73dff103c9e186d97b36 fee_zat=10000 running_total_zat=10000 stage=bootstrap
+MAINNET TRANSACTION txid=7f1d30c2875daa7b1e2dacfb97004c86a443c3d75a6b73dff103c9e186d97b36 height=3531325 bytes=9166
+
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 running_total_before_zat=10000 projected_total_zat=25000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda fee_zat=15000 running_total_zat=25000 stage=mint subject=1
+MAINNET TRANSACTION txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda height=3531327 bytes=12322
+
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 running_total_before_zat=25000 projected_total_zat=40000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 fee_zat=15000 running_total_zat=40000 stage=mint subject=2
+MAINNET TRANSACTION txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 height=3531328 bytes=12322
+
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 running_total_before_zat=40000 projected_total_zat=55000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 fee_zat=15000 running_total_zat=55000 stage=mint subject=3
+MAINNET TRANSACTION txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 height=3531329 bytes=12322
+
+FEE_PRE_ESTIMATE fee_zat=10000 spends=2 outputs=2 actions=2
+FEE_FINAL fee_zat=10000 actions=2
+FEE fee_zat=10000 running_total_before_zat=55000 projected_total_zat=65000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec fee_zat=10000 running_total_zat=65000 stage=mint subject=FINAL
+MAINNET TRANSACTION txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec height=3531330 bytes=9166
+```
+
+```text
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK lagos-lights 1 MINT_TXID_LIST_FILE
+FINAL txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec action=0 height=3531330
+ITEM 1 VALID txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda action=2 cmx=6a44a03186657519c928c068212550f53313518890dc5846062320aa89e09e1d
+ITEM 2 VALID txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 action=2 cmx=4efd3afe51ec24ee0eacff5af02c654c3bbbdcf5039fb6fdea3d1a6506eb4a19
+ITEM 3 VALID txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 action=0 cmx=6de2c6b676700d2c1b2a93cf08dfbcdf6ae8056756071b69b16a6df51c546c20
+SUPPLY SEALED count=3
+VERIFY_TIMING mode=verify-any-item tx_count=5 elapsed_ms=1217
+```
+
+```text
+COMMAND carrier-verifier mainnet-transfer PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY 4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 2 TOBI_TRANSFER_VAULT FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY 65000
+FEE_PRE_ESTIMATE fee_zat=10000 spends=2 outputs=2 actions=2
+FEE_FINAL fee_zat=10000 actions=2
+FEE fee_zat=10000 sale_price_zat=0 running_total_before_zat=65000 projected_total_zat=75000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 fee_zat=10000 running_total_zat=75000 stage=transfer collection=lagos-lights item=2 hop=1
+MAINNET TRANSACTION txid=2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 height=3531336 bytes=9166
+```
+
+```text
+COMMAND carrier-verifier mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS TOBI_PROOF CHALLENGE MINT_TXID_LIST_FILE
+HELD collection=lagos-lights item=2 hop=1 txid=2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 action=1 cmx=5e73b9369a03f23b7ba7aad0667c890e99fcf20a392292da3b321201f01a941b nullifier=ffacce3dbeb13bb5c5129b516e2b1a2ddf27b5381d0809e4dc5dab974419fa3b control_signature=VALID
+VERIFY_TIMING mode=challenge-proof tx_count=6 elapsed_ms=1274
+```
+
+```text
+COMMAND carrier-verifier mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS TOBI_WALLET TOBI_ID FUNDING_WALLET FUNDING_IDENTITY 2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 1 KEMI_SALE_VAULT TOBI_PAYMENT BIRTHDAY 20000 75000
+Error: Buyer funding note cannot cover sale price and fee
 ```
 
 ## O2

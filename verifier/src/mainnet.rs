@@ -677,6 +677,527 @@ pub(crate) fn mint(
     Ok(())
 }
 
+pub(crate) fn transfer(
+    primary: &str,
+    secondary: &str,
+    vault_wallet: &str,
+    vault_identity: &str,
+    origin_txid: &str,
+    origin_action: usize,
+    recipient_address: &str,
+    funding_wallet: &str,
+    funding_identity: &str,
+    birthday: u32,
+    running_total: u64,
+) -> Result<()> {
+    let servers = MainnetLightwalletd::new(primary, secondary)?;
+    let vault_usk = spending_key(vault_wallet, vault_identity)?;
+    let vault_fvk = FullViewingKey::from(vault_usk.orchard());
+    let funding_usk = spending_key(funding_wallet, funding_identity)?;
+    let funding_fvk = FullViewingKey::from(funding_usk.orchard());
+    ensure!(
+        vault_fvk.to_bytes() != funding_fvk.to_bytes(),
+        "Funding wallet must be separate from item vault"
+    );
+    let snapshot = servers.consistent_snapshot()?;
+    let height = block_height(snapshot.height)?;
+    let (vault_txs, funding_txs, initial_tree) =
+        load_chain_pair(&servers, birthday, &vault_fvk, &funding_fvk)?;
+    let old_tx = vault_txs
+        .iter()
+        .find(|tx| tx.txid == origin_txid)
+        .context("Carrier transaction not found")?;
+    let carrier = &old_tx
+        .notes
+        .iter()
+        .find(|(index, _)| *index == origin_action)
+        .context("Carrier note not recovered")?
+        .1;
+    let vault_recipient = carrier.note.recipient().to_raw_address_bytes();
+    let vault_notes: Vec<_> = vault_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter())
+        .filter(|(_, note)| note.note.recipient().to_raw_address_bytes() == vault_recipient)
+        .collect();
+    ensure!(
+        vault_notes.len() == 1,
+        "Item vault must hold exactly one item and no other notes; found={}",
+        vault_notes.len()
+    );
+    let old_memo = parse_carrier_memo(&carrier.memo).context("Origin is not a carrier note")?;
+    let item = old_memo.item.context("Origin is not an item note")?;
+    ensure!(
+        carrier.note.value().inner() == 0,
+        "Carrier must have zero value"
+    );
+    let spent: HashSet<_> = vault_txs
+        .iter()
+        .flat_map(|tx| tx.nullifiers.iter().cloned())
+        .collect();
+    let carrier_nullifier = hex::encode(carrier.note.nullifier(&vault_fvk).to_bytes());
+    ensure!(!spent.contains(&carrier_nullifier), "Carrier already spent");
+    let (funding_tx, funding_action, funding_note, _, funding_value) =
+        unspent_positive(&funding_txs, &funding_fvk)?;
+    let carrier_path = witness(&vault_txs, initial_tree.clone(), origin_txid, origin_action)?;
+    let funding_path = witness(
+        &funding_txs,
+        initial_tree.clone(),
+        &funding_tx,
+        funding_action,
+    )?;
+    let anchor = carrier_path.root(carrier.note.commitment().into());
+    ensure!(
+        funding_path.root(funding_note.commitment().into()) == anchor,
+        "Witness anchors differ"
+    );
+    let recipient = address(recipient_address)?;
+    ensure!(
+        recipient.to_raw_address_bytes() != vault_recipient
+            && vault_fvk.scope_for_address(&recipient).is_none(),
+        "Recipient must be a fresh address outside the item vault"
+    );
+    let successor_memo = carrier_memo(
+        &old_memo.collection,
+        item,
+        old_memo.hop.checked_add(1).context("Hop overflow")?,
+    )?;
+    let mut probe = Builder::new(
+        MAIN_NETWORK,
+        height,
+        BuildConfig::Standard {
+            sapling_anchor: None,
+            orchard_anchor: None,
+            ironwood_anchor: Some(anchor),
+            orchard_padding: BundlePadding::DEFAULT,
+            ironwood_padding: BundlePadding::DEFAULT,
+        },
+    );
+    probe
+        .add_ironwood_spend::<Infallible>(
+            vault_fvk.clone(),
+            carrier.note.clone(),
+            carrier_path.clone(),
+        )
+        .map_err(|e| anyhow!("Carrier fee probe input: {e:?}"))?;
+    probe
+        .add_ironwood_spend::<Infallible>(
+            funding_fvk.clone(),
+            funding_note.clone(),
+            funding_path.clone(),
+        )
+        .map_err(|e| anyhow!("Funding fee probe input: {e:?}"))?;
+    probe
+        .add_ironwood_output::<Infallible>(None, recipient, Zatoshis::ZERO, successor_memo.clone())
+        .map_err(|e| anyhow!("Carrier fee probe output: {e:?}"))?;
+    probe
+        .add_ironwood_output::<Infallible>(
+            None,
+            funding_fvk.address_at(1u64, Scope::Internal),
+            Zatoshis::ZERO,
+            MemoBytes::empty(),
+        )
+        .map_err(|e| anyhow!("Funding fee probe change: {e:?}"))?;
+    let fee = probe
+        .get_fee(&zip317::FeeRule::standard())
+        .map_err(|e| anyhow!("Transfer fee calculation failed: {e:?}"))?
+        .into_u64();
+    let change = funding_value
+        .checked_sub(fee)
+        .context("Funding note cannot cover transfer fee")?;
+    let prover = LocalTxProver::bundled();
+    for candidate in 1..=64 {
+        let mut builder = Builder::new(
+            MAIN_NETWORK,
+            height,
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_padding: BundlePadding::DEFAULT,
+                ironwood_padding: BundlePadding::DEFAULT,
+            },
+        );
+        builder
+            .add_ironwood_spend::<Infallible>(
+                vault_fvk.clone(),
+                carrier.note.clone(),
+                carrier_path.clone(),
+            )
+            .map_err(|e| anyhow!("Carrier input: {e:?}"))?;
+        builder
+            .add_ironwood_spend::<Infallible>(
+                funding_fvk.clone(),
+                funding_note.clone(),
+                funding_path.clone(),
+            )
+            .map_err(|e| anyhow!("Funding input: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                recipient,
+                Zatoshis::ZERO,
+                successor_memo.clone(),
+            )
+            .map_err(|e| anyhow!("Carrier output: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                Some(funding_fvk.to_ovk(Scope::External)),
+                funding_fvk.address_at(1u64, Scope::Internal),
+                Zatoshis::from_u64(change)?,
+                MemoBytes::empty(),
+            )
+            .map_err(|e| anyhow!("Funding change: {e:?}"))?;
+        let built = builder
+            .build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[
+                    SpendAuthorizingKey::from(vault_usk.orchard()),
+                    SpendAuthorizingKey::from(funding_usk.orchard()),
+                ],
+                UnwrapErr(SysRng),
+                &prover,
+                &prover,
+                &zip317::FeeRule::standard(),
+            )
+            .map_err(|e| anyhow!("Transfer build failed: {e:?}"))?;
+        let carrier_action = built
+            .ironwood_meta()
+            .spend_action_index(0)
+            .context("No carrier action")?;
+        let successor_action = built
+            .ironwood_meta()
+            .output_action_index(0)
+            .context("No successor action")?;
+        if carrier_action != successor_action {
+            println!(
+                "TRANSFER_CONSTRUCTION candidate={candidate} carrier_input_action={carrier_action} requested_successor_action={successor_action}"
+            );
+            continue;
+        }
+        let tx = built.transaction();
+        let final_actions = tx
+            .ironwood_bundle()
+            .context("Final transfer has no Ironwood bundle")?
+            .actions()
+            .len();
+        let final_fee = funding_value
+            .checked_sub(change)
+            .context("Transfer fee underflow")?;
+        ensure!(
+            final_actions == 2,
+            "Transfer action count changed during build"
+        );
+        println!("FEE_PRE_ESTIMATE fee_zat={fee} spends=2 outputs=2 actions=2");
+        println!("FEE_FINAL fee_zat={final_fee} actions={final_actions}");
+        let projected = running_total
+            .checked_add(final_fee)
+            .context("M2 total overflow")?;
+        println!(
+            "FEE fee_zat={final_fee} sale_price_zat=0 running_total_before_zat={running_total} projected_total_zat={projected} tx_cap_zat={M2_TX_FEE_CAP_ZAT} cap_zat={M2_CAP_ZAT}"
+        );
+        ensure!(
+            final_fee <= M2_TX_FEE_CAP_ZAT,
+            "ABORT M2 transaction fee cap exceeded final_fee_zat={} cap_zat={}",
+            final_fee,
+            M2_TX_FEE_CAP_ZAT
+        );
+        ensure!(projected <= M2_CAP_ZAT, "ABORT M2 fee cap exceeded");
+        let mut raw = Vec::new();
+        tx.write(&mut raw)?;
+        servers.send_transaction(raw)?;
+        println!(
+            "BROADCAST txid={} fee_zat={final_fee} running_total_zat={projected} stage=transfer collection={} item={} hop={}",
+            tx.txid(),
+            old_memo.collection,
+            item,
+            old_memo.hop + 1
+        );
+        return Ok(());
+    }
+    bail!("No same-Action transfer constructed; nothing broadcast")
+}
+
+pub(crate) fn sale(
+    primary: &str,
+    secondary: &str,
+    seller_wallet: &str,
+    seller_identity: &str,
+    buyer_funding_wallet: &str,
+    buyer_funding_identity: &str,
+    origin_txid: &str,
+    origin_action: usize,
+    buyer_vault_address: &str,
+    seller_payment_address: &str,
+    birthday: u32,
+    price: u64,
+    running_total: u64,
+) -> Result<()> {
+    ensure!(price > 0, "Sale price must be positive");
+    let servers = MainnetLightwalletd::new(primary, secondary)?;
+    let seller_usk = spending_key(seller_wallet, seller_identity)?;
+    let seller_fvk = FullViewingKey::from(seller_usk.orchard());
+    let buyer_usk = spending_key(buyer_funding_wallet, buyer_funding_identity)?;
+    let buyer_fvk = FullViewingKey::from(buyer_usk.orchard());
+    ensure!(
+        seller_fvk.to_bytes() != buyer_fvk.to_bytes(),
+        "Buyer funding wallet must be separate from seller vault"
+    );
+    let snapshot = servers.consistent_snapshot()?;
+    let height = block_height(snapshot.height)?;
+    let (seller_txs, buyer_txs, initial_tree) =
+        load_chain_pair(&servers, birthday, &seller_fvk, &buyer_fvk)?;
+    let seller_tx = seller_txs
+        .iter()
+        .find(|tx| tx.txid == origin_txid)
+        .context("Seller carrier transaction not found")?;
+    let seller_note = &seller_tx
+        .notes
+        .iter()
+        .find(|(index, _)| *index == origin_action)
+        .context("Seller carrier note not recovered")?
+        .1;
+    let seller_recipient = seller_note.note.recipient().to_raw_address_bytes();
+    let seller_vault_notes: Vec<_> = seller_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter())
+        .filter(|(_, note)| note.note.recipient().to_raw_address_bytes() == seller_recipient)
+        .collect();
+    ensure!(
+        seller_vault_notes.len() == 1,
+        "Seller item vault must hold exactly one item and no other notes; found={}",
+        seller_vault_notes.len()
+    );
+    let seller_memo =
+        parse_carrier_memo(&seller_note.memo).context("Seller note is not a carrier item")?;
+    let item = seller_memo.item.context("Seller note is not an item")?;
+    ensure!(
+        seller_note.note.value().inner() == 0,
+        "Seller carrier value is not zero"
+    );
+    let spent: HashSet<_> = seller_txs
+        .iter()
+        .flat_map(|tx| tx.nullifiers.iter().cloned())
+        .collect();
+    let seller_nullifier = hex::encode(seller_note.note.nullifier(&seller_fvk).to_bytes());
+    ensure!(
+        !spent.contains(&seller_nullifier),
+        "Seller carrier already spent"
+    );
+    let (funding_tx, funding_action, funding_note, _, funding_value) =
+        unspent_positive(&buyer_txs, &buyer_fvk)?;
+    let buyer_vault = address(buyer_vault_address)?;
+    ensure!(
+        buyer_vault.to_raw_address_bytes() != seller_recipient
+            && buyer_fvk.scope_for_address(&buyer_vault).is_none(),
+        "Buyer vault must be fresh and separate from seller vault"
+    );
+    let seller_payment = address(seller_payment_address)?;
+    ensure!(
+        seller_payment.to_raw_address_bytes() != seller_recipient
+            && seller_payment.to_raw_address_bytes() != buyer_vault.to_raw_address_bytes(),
+        "Seller payment must be separate from both vaults"
+    );
+    let seller_path = witness(
+        &seller_txs,
+        initial_tree.clone(),
+        origin_txid,
+        origin_action,
+    )?;
+    let funding_path = witness(
+        &buyer_txs,
+        initial_tree.clone(),
+        &funding_tx,
+        funding_action,
+    )?;
+    let anchor = seller_path.root(seller_note.note.commitment().into());
+    ensure!(
+        funding_path.root(funding_note.commitment().into()) == anchor,
+        "Witness anchors differ"
+    );
+    let successor_memo = carrier_memo(
+        &seller_memo.collection,
+        item,
+        seller_memo.hop.checked_add(1).context("Hop overflow")?,
+    )?;
+    let mut probe = Builder::new(
+        MAIN_NETWORK,
+        height,
+        BuildConfig::Standard {
+            sapling_anchor: None,
+            orchard_anchor: None,
+            ironwood_anchor: Some(anchor),
+            orchard_padding: BundlePadding::DEFAULT,
+            ironwood_padding: BundlePadding::DEFAULT,
+        },
+    );
+    probe
+        .add_ironwood_spend::<Infallible>(
+            seller_fvk.clone(),
+            seller_note.note.clone(),
+            seller_path.clone(),
+        )
+        .map_err(|e| anyhow!("Seller fee probe input: {e:?}"))?;
+    probe
+        .add_ironwood_spend::<Infallible>(
+            buyer_fvk.clone(),
+            funding_note.clone(),
+            funding_path.clone(),
+        )
+        .map_err(|e| anyhow!("Buyer fee probe input: {e:?}"))?;
+    probe
+        .add_ironwood_output::<Infallible>(
+            None,
+            buyer_vault,
+            Zatoshis::ZERO,
+            successor_memo.clone(),
+        )
+        .map_err(|e| anyhow!("Carrier fee probe output: {e:?}"))?;
+    probe
+        .add_ironwood_output::<Infallible>(
+            None,
+            seller_payment,
+            Zatoshis::from_u64(price)?,
+            MemoBytes::empty(),
+        )
+        .map_err(|e| anyhow!("Payment fee probe output: {e:?}"))?;
+    probe
+        .add_ironwood_output::<Infallible>(
+            None,
+            buyer_fvk.address_at(1u64, Scope::Internal),
+            Zatoshis::ZERO,
+            MemoBytes::empty(),
+        )
+        .map_err(|e| anyhow!("Buyer fee probe change: {e:?}"))?;
+    let fee = probe
+        .get_fee(&zip317::FeeRule::standard())
+        .map_err(|e| anyhow!("Sale fee calculation failed: {e:?}"))?
+        .into_u64();
+    let change = funding_value
+        .checked_sub(price)
+        .and_then(|value| value.checked_sub(fee))
+        .context("Buyer funding note cannot cover sale price and fee")?;
+    let prover = LocalTxProver::bundled();
+    for candidate in 1..=64 {
+        let mut builder = Builder::new(
+            MAIN_NETWORK,
+            height,
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_padding: BundlePadding::DEFAULT,
+                ironwood_padding: BundlePadding::DEFAULT,
+            },
+        );
+        builder
+            .add_ironwood_spend::<Infallible>(
+                seller_fvk.clone(),
+                seller_note.note.clone(),
+                seller_path.clone(),
+            )
+            .map_err(|e| anyhow!("Seller input: {e:?}"))?;
+        builder
+            .add_ironwood_spend::<Infallible>(
+                buyer_fvk.clone(),
+                funding_note.clone(),
+                funding_path.clone(),
+            )
+            .map_err(|e| anyhow!("Buyer funding input: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                buyer_vault,
+                Zatoshis::ZERO,
+                successor_memo.clone(),
+            )
+            .map_err(|e| anyhow!("Carrier output: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                seller_payment,
+                Zatoshis::from_u64(price)?,
+                MemoBytes::empty(),
+            )
+            .map_err(|e| anyhow!("Seller payment: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                Some(buyer_fvk.to_ovk(Scope::External)),
+                buyer_fvk.address_at(1u64, Scope::Internal),
+                Zatoshis::from_u64(change)?,
+                MemoBytes::empty(),
+            )
+            .map_err(|e| anyhow!("Buyer funding change: {e:?}"))?;
+        let built = builder
+            .build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[
+                    SpendAuthorizingKey::from(seller_usk.orchard()),
+                    SpendAuthorizingKey::from(buyer_usk.orchard()),
+                ],
+                UnwrapErr(SysRng),
+                &prover,
+                &prover,
+                &zip317::FeeRule::standard(),
+            )
+            .map_err(|e| anyhow!("Sale build failed: {e:?}"))?;
+        let seller_action = built
+            .ironwood_meta()
+            .spend_action_index(0)
+            .context("No seller action")?;
+        let carrier_action = built
+            .ironwood_meta()
+            .output_action_index(0)
+            .context("No carrier output action")?;
+        if seller_action != carrier_action {
+            println!(
+                "SALE_CONSTRUCTION candidate={candidate} seller_input_action={seller_action} requested_successor_action={carrier_action}"
+            );
+            continue;
+        }
+        let tx = built.transaction();
+        let final_actions = tx
+            .ironwood_bundle()
+            .context("Final sale has no Ironwood bundle")?
+            .actions()
+            .len();
+        let final_fee = funding_value
+            .checked_sub(price)
+            .and_then(|value| value.checked_sub(change))
+            .context("Sale fee underflow")?;
+        ensure!(final_actions == 3, "Sale action count changed during build");
+        println!("FEE_PRE_ESTIMATE fee_zat={fee} spends=2 outputs=3 actions=3");
+        println!("FEE_FINAL fee_zat={final_fee} actions={final_actions}");
+        let projected = running_total
+            .checked_add(price)
+            .and_then(|value| value.checked_add(final_fee))
+            .context("M2 total overflow")?;
+        println!(
+            "FEE fee_zat={final_fee} sale_price_zat={price} running_total_before_zat={running_total} projected_total_zat={projected} tx_cap_zat={M2_TX_FEE_CAP_ZAT} cap_zat={M2_CAP_ZAT}"
+        );
+        ensure!(
+            final_fee <= M2_TX_FEE_CAP_ZAT,
+            "ABORT M2 transaction fee cap exceeded final_fee_zat={} cap_zat={}",
+            final_fee,
+            M2_TX_FEE_CAP_ZAT
+        );
+        ensure!(projected <= M2_CAP_ZAT, "ABORT M2 fee cap exceeded");
+        let mut raw = Vec::new();
+        tx.write(&mut raw)?;
+        servers.send_transaction(raw)?;
+        println!(
+            "BROADCAST txid={} fee_zat={final_fee} sale_price_zat={price} running_total_zat={projected} stage=sale collection={} item={} hop={}",
+            tx.txid(),
+            seller_memo.collection,
+            item,
+            seller_memo.hop + 1
+        );
+        return Ok(());
+    }
+    bail!("No same-Action sale constructed; nothing broadcast")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
