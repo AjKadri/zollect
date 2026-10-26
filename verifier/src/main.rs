@@ -22,9 +22,14 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     process::Command,
+    time::Instant,
 };
+#[cfg(feature = "mainnet")]
+use zcash_client_backend::proto::service::RawTransaction;
 use zcash_keys::{address::UnifiedAddress, keys::UnifiedFullViewingKey};
 use zcash_primitives::transaction::Transaction;
+#[cfg(feature = "mainnet")]
+use zcash_protocol::consensus::MAIN_NETWORK;
 use zcash_protocol::{
     consensus::{BlockHeight, BranchId},
     local_consensus::LocalNetwork,
@@ -437,6 +442,200 @@ fn load_chain_for_key(
     load_chain(url, &[fvk], secondary_url)
 }
 
+#[cfg(feature = "mainnet")]
+fn validate_known_txids(txids: Vec<String>) -> Result<Vec<String>> {
+    for txid in &txids {
+        ensure!(
+            txid.len() == 64 && txid.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "Invalid transaction id in known list"
+        );
+    }
+    ensure!(
+        !txids.is_empty(),
+        "Known transaction list must not be empty"
+    );
+    Ok(txids)
+}
+
+#[cfg(feature = "mainnet")]
+pub(crate) fn read_known_txids(path: &str) -> Result<Vec<String>> {
+    validate_known_txids(
+        fs::read_to_string(path)?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
+#[cfg(feature = "mainnet")]
+pub(crate) fn load_known_mainnet_transactions(
+    servers: &lightwalletd::MainnetLightwalletd,
+    txids: &[String],
+    fvk: &FullViewingKey,
+) -> Result<Vec<ChainTx>> {
+    let rows = servers.known_transactions(txids)?;
+    decode_known_mainnet_transactions(&rows, fvk)
+}
+
+#[cfg(feature = "mainnet")]
+fn decode_known_mainnet_transactions(
+    rows: &[(String, RawTransaction)],
+    fvk: &FullViewingKey,
+) -> Result<Vec<ChainTx>> {
+    let ivks = [fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal)];
+    let ovks = [fvk.to_ovk(Scope::External), fvk.to_ovk(Scope::Internal)];
+    let mut txs = Vec::new();
+    for (expected_txid, raw) in rows {
+        let height = u32::try_from(raw.height).context("Mainnet transaction height exceeds u32")?;
+        ensure!(height > 0, "Known transaction is not mined");
+        let height = BlockHeight::from_u32(height);
+        let tx = Transaction::read(
+            raw.data.as_slice(),
+            BranchId::for_height(&MAIN_NETWORK, height),
+        )?;
+        ensure!(
+            tx.txid().to_string() == *expected_txid,
+            "Raw transaction id mismatch expected={} observed={}",
+            expected_txid,
+            tx.txid()
+        );
+        if let Some(bundle) = tx.ironwood_bundle() {
+            let mut notes: HashMap<usize, SeenNote> = HashMap::new();
+            for (index, _, note, _, memo) in bundle.recover_outputs_with_ovks(&ovks) {
+                notes.insert(
+                    index,
+                    SeenNote {
+                        note,
+                        memo,
+                        owned: false,
+                    },
+                );
+            }
+            for (index, _, note, _, memo) in bundle.decrypt_outputs_with_keys(&ivks) {
+                notes.insert(
+                    index,
+                    SeenNote {
+                        note,
+                        memo,
+                        owned: true,
+                    },
+                );
+            }
+            let mut notes: Vec<_> = notes.into_iter().collect();
+            notes.sort_by_key(|(index, _)| *index);
+            txs.push(ChainTx {
+                txid: expected_txid.clone(),
+                height: u64::from(height),
+                notes,
+                nullifiers: bundle
+                    .actions()
+                    .iter()
+                    .map(|action| hex::encode(action.nullifier().to_bytes()))
+                    .collect(),
+                commitments: bundle
+                    .actions()
+                    .iter()
+                    .map(|action| action.cmx().to_bytes())
+                    .collect(),
+            });
+        }
+    }
+    txs.sort_by_key(|tx| (tx.height, tx.txid.clone()));
+    Ok(txs)
+}
+
+#[cfg(feature = "mainnet")]
+fn load_known_mainnet_chain(
+    servers: &lightwalletd::MainnetLightwalletd,
+    txid_file: &str,
+    fvk: &FullViewingKey,
+) -> Result<Vec<ChainTx>> {
+    let txids = read_known_txids(txid_file)?;
+    load_known_mainnet_transactions(servers, &txids, fvk)
+}
+
+#[cfg(feature = "mainnet")]
+fn mainnet_verify_item(
+    primary: &str,
+    secondary: &str,
+    issuer_ufvk_file: &str,
+    collection: &str,
+    item: u64,
+    txid_file: &str,
+) -> Result<()> {
+    let started = Instant::now();
+    let servers = lightwalletd::MainnetLightwalletd::new(primary, secondary)?;
+    let issuer_text = fs::read_to_string(issuer_ufvk_file)?;
+    let issuer_ufvk = UnifiedFullViewingKey::decode(&MAIN_NETWORK, issuer_text.trim())
+        .map_err(|_| anyhow!("Invalid mainnet issuer UFVK"))?;
+    let issuer_fvk = issuer_ufvk
+        .orchard()
+        .context("Issuer UFVK has no Orchard key")?;
+    let txs = load_known_mainnet_chain(&servers, txid_file, issuer_fvk)?;
+    let items = match verify_issuance(&txs, issuer_fvk, collection, true) {
+        Ok(items) => items,
+        Err(error) => {
+            println!(
+                "VERIFY_TIMING mode=verify-any-item tx_count={} status=FAIL elapsed_ms={}",
+                txs.len(),
+                started.elapsed().as_millis()
+            );
+            return Err(error);
+        }
+    };
+    ensure!(
+        items.iter().any(|(number, _, _, _)| *number == item),
+        "FAIL requested item not present item={item}"
+    );
+    println!(
+        "VERIFY_TIMING mode=verify-any-item tx_count={} elapsed_ms={}",
+        txs.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(())
+}
+
+#[cfg(feature = "mainnet")]
+fn mainnet_verify_proof(
+    primary: &str,
+    secondary: &str,
+    proof_file: &str,
+    challenge: &str,
+    txid_file: Option<&str>,
+) -> Result<()> {
+    let started = Instant::now();
+    let servers = lightwalletd::MainnetLightwalletd::new(primary, secondary)?;
+    let proof: Value = serde_json::from_slice(&fs::read(proof_file)?)?;
+    let ufvk = UnifiedFullViewingKey::decode(
+        &MAIN_NETWORK,
+        proof["ufvk"].as_str().context("Missing UFVK")?,
+    )
+    .map_err(|_| anyhow!("Invalid mainnet proof UFVK"))?;
+    let fvk = ufvk.orchard().context("Proof UFVK has no Orchard key")?;
+    let txids = match txid_file {
+        Some(path) => Ok(read_known_txids(path)?),
+        None => validate_known_txids(
+            proof["chain_txids"]
+                .as_array()
+                .context("Missing proof chain_txids")?
+                .iter()
+                .map(|txid| txid.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+                .context("Invalid proof chain_txids")?,
+        ),
+    }?;
+    let txs = load_known_mainnet_transactions(&servers, &txids, fvk)?;
+    ownership::verify_proof_with_network(proof_file, challenge, &txs, &MAIN_NETWORK)?;
+    println!(
+        "VERIFY_TIMING mode=challenge-proof tx_count={} elapsed_ms={}",
+        txs.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(())
+}
+
 fn memo_text(memo: &[u8; 512]) -> &str {
     std::str::from_utf8(memo)
         .unwrap_or("")
@@ -613,6 +812,23 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
+        #[cfg(feature = "mainnet")]
+        Some("mainnet-verify-item") if args.len() == 8 => mainnet_verify_item(
+            &args[2],
+            &args[3],
+            &args[4],
+            &args[5],
+            args[6].parse()?,
+            &args[7],
+        ),
+        #[cfg(feature = "mainnet")]
+        Some("mainnet-proof") if args.len() == 6 || args.len() == 7 => mainnet_verify_proof(
+            &args[2],
+            &args[3],
+            &args[4],
+            &args[5],
+            args.get(6).map(String::as_str),
+        ),
         #[cfg(all(feature = "mainnet", feature = "sender"))]
         Some("mainnet-ufvk") if args.len() == 5 => {
             mainnet::write_ufvk(&args[2], &args[3], &args[4])
@@ -621,6 +837,20 @@ fn main() -> Result<()> {
         Some("mainnet-issuance") if args.len() == 7 => {
             mainnet::issuance(&args[2], &args[3], &args[4], &args[5], args[6].parse()?)
         }
+        #[cfg(all(feature = "mainnet", feature = "sender"))]
+        Some("mainnet-attest") if args.len() == 13 => mainnet::attest(
+            &args[2],
+            &args[3],
+            &args[4],
+            &args[5],
+            &args[6],
+            args[7].parse()?,
+            &args[8],
+            &args[9],
+            &args[10],
+            args[11].parse()?,
+            &args[12],
+        ),
         #[cfg(all(feature = "mainnet", feature = "sender"))]
         Some("mainnet-mint") if args.len() == 13 => mainnet::mint(
             &args[2],
@@ -720,7 +950,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "trustee")]
         Some("fund-extract") if args.len() == 4 => trustee::extract(&args[2], &args[3]),
         _ => bail!(
-            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS | mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS TXID | mainnet-ufvk MAINNET_WALLET IDENTITY OUTPUT | mainnet-issuance PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK COLLECTION BIRTHDAY | mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY COLLECTION SUBJECT DESTINATION RUNNING_TOTAL | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
+            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS | mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS TXID | mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK_FILE COLLECTION ITEM TXID_LIST_FILE | mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS PROOF_FILE CHALLENGE [TXID_LIST_FILE] | mainnet-ufvk MAINNET_WALLET IDENTITY OUTPUT | mainnet-issuance PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK COLLECTION BIRTHDAY | mainnet-attest PRIMARY_HTTPS SECONDARY_HTTPS MAINNET_WALLET IDENTITY TXID ACTION CHALLENGE OUTPUT COLLECTION ITEM TXID_LIST_FILE | mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY COLLECTION SUBJECT DESTINATION RUNNING_TOTAL | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
         ),
     }
 }

@@ -1,5 +1,5 @@
 use crate::network::{MAINNET_CHAIN_NAME, MainnetConfig};
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use std::{thread, time::Duration};
 use zcash_client_backend::proto::compact_formats::CompactBlock;
 use zcash_client_backend::proto::service::{
@@ -109,6 +109,34 @@ impl Endpoint {
                 .await
                 .context("lightwalletd transaction request failed")?
                 .into_inner())
+        })
+    }
+
+    fn transactions(&self, txids: &[String]) -> Result<Vec<RawTransaction>> {
+        let hashes = txids
+            .iter()
+            .map(|txid| displayed_txid_hash(txid))
+            .collect::<Result<Vec<_>>>()?;
+        let url = self.url.clone();
+        run(async move {
+            let mut client = CompactTxStreamerClient::connect(url)
+                .await
+                .context("lightwalletd connection failed")?;
+            let mut transactions = Vec::with_capacity(hashes.len());
+            for hash in hashes {
+                transactions.push(
+                    client
+                        .get_transaction(TxFilter {
+                            block: None,
+                            index: 0,
+                            hash,
+                        })
+                        .await
+                        .context("lightwalletd transaction request failed")?
+                        .into_inner(),
+                );
+            }
+            Ok(transactions)
         })
     }
 
@@ -285,6 +313,60 @@ impl MainnetLightwalletd {
         Ok(primary)
     }
 
+    pub(crate) fn known_transactions(
+        &self,
+        txids: &[String],
+    ) -> Result<Vec<(String, RawTransaction)>> {
+        ensure!(
+            !txids.is_empty(),
+            "Known transaction list must not be empty"
+        );
+        let mut unique = Vec::with_capacity(txids.len());
+        for txid in txids {
+            let _ = displayed_txid_hash(txid)?;
+            ensure!(
+                !unique.iter().any(|known: &String| known == txid),
+                "Duplicate known transaction id: {txid}"
+            );
+            unique.push(txid.clone());
+        }
+
+        let snapshot = self.consistent_snapshot()?;
+        let primary_endpoint = self.primary.clone();
+        let secondary_endpoint = self.secondary.clone();
+        let primary_txids = unique.clone();
+        let secondary_txids = unique.clone();
+        let primary_thread = thread::spawn(move || primary_endpoint.transactions(&primary_txids));
+        let secondary_thread =
+            thread::spawn(move || secondary_endpoint.transactions(&secondary_txids));
+        let primary = primary_thread
+            .join()
+            .map_err(|_| anyhow!("primary transaction fetch thread panicked"))??;
+        let secondary = secondary_thread
+            .join()
+            .map_err(|_| anyhow!("secondary transaction fetch thread panicked"))??;
+        ensure!(
+            primary.len() == secondary.len(),
+            "FAIL RPC_SERVER_DISAGREEMENT known transaction count differs"
+        );
+
+        let mut result = Vec::with_capacity(unique.len());
+        for ((txid, left), right) in unique.into_iter().zip(primary).zip(secondary) {
+            ensure!(
+                left == right,
+                "FAIL RPC_SERVER_DISAGREEMENT lightwalletd transaction differs txid={txid}"
+            );
+            ensure!(
+                left.height > 0 && left.height <= snapshot.height,
+                "FAIL LIGHTWALLETD_TRANSACTION_NOT_MINED txid={txid} height={} tip={}",
+                left.height,
+                snapshot.height
+            );
+            result.push((txid, left));
+        }
+        Ok(result)
+    }
+
     pub(crate) fn consistent_chain_data(
         &self,
         birthday: u32,
@@ -394,8 +476,12 @@ mod tests {
         let servers =
             MainnetLightwalletd::new("https://na.zec.rocks:443", "https://eu.zec.rocks:443")
                 .unwrap();
-        let transaction = servers.transaction(KNOWN_MINED_TXID).unwrap();
-        assert_eq!(transaction.height, 3530585);
-        assert!(!transaction.data.is_empty());
+        let transactions = servers
+            .known_transactions(&[KNOWN_MINED_TXID.to_owned()])
+            .unwrap();
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0].0, KNOWN_MINED_TXID);
+        assert_eq!(transactions[0].1.height, 3530585);
+        assert!(!transactions[0].1.data.is_empty());
     }
 }

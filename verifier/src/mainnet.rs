@@ -302,6 +302,68 @@ pub(crate) fn issuance(
     verify_issuance(&txs, fvk, collection, true).map(|_| ())
 }
 
+pub(crate) fn attest(
+    primary: &str,
+    secondary: &str,
+    wallet: &str,
+    identity: &str,
+    txid: &str,
+    action: usize,
+    challenge: &str,
+    output: &str,
+    collection: &str,
+    item: u64,
+    txid_file: &str,
+) -> Result<()> {
+    let servers = MainnetLightwalletd::new(primary, secondary)?;
+    let usk = spending_key(wallet, identity)?;
+    let ufvk = usk.to_unified_full_viewing_key();
+    let fvk = ufvk.orchard().context("No mainnet Orchard key")?;
+    let txids = crate::read_known_txids(txid_file)?;
+    let txs = crate::load_known_mainnet_transactions(&servers, &txids, fvk)?;
+    let target = txs
+        .iter()
+        .find(|transaction| transaction.txid == txid)
+        .context("No target mainnet transaction")?;
+    let note = &target
+        .notes
+        .iter()
+        .find(|(index, note)| *index == action && note.owned)
+        .context("Mainnet key does not decrypt target note")?
+        .1;
+    let memo = parse_carrier_memo(&note.memo).context("Target is not a carrier item")?;
+    ensure!(
+        memo.collection == collection && memo.item == Some(item),
+        "Target item metadata mismatch"
+    );
+    let cmx = hex::encode(
+        *target
+            .commitments
+            .get(action)
+            .context("Mainnet proof action out of range")?,
+    );
+    let nullifier = hex::encode(note.note.nullifier(fvk).to_bytes());
+    let key =
+        SpendAuthorizingKey::from(usk.orchard()).randomize(&pasta_curves::pallas::Scalar::from(0));
+    let signature = key.sign(
+        UnwrapErr(SysRng),
+        &crate::ownership::message(challenge, txid, action, &cmx, &nullifier),
+    );
+    let proof = json!({
+        "challenge": challenge, "collection": collection, "item": item, "hop": memo.hop,
+        "txid": txid, "action": action, "cmx": cmx, "nullifier": nullifier,
+        "vault_recipient": hex::encode(note.note.recipient().to_raw_address_bytes()),
+        "ufvk": ufvk.encode(&MAIN_NETWORK)?, "signature": hex::encode(<[u8; 64]>::from(&signature)),
+        "chain_txids": txids,
+    });
+    fs::write(output, serde_json::to_vec_pretty(&proof)?)?;
+    println!(
+        "CONTROL_PROOF collection={} item={} hop={} txid={} action={} proof_file={output}",
+        collection, item, memo.hop, txid, action
+    );
+    Ok(())
+}
+
 pub(crate) fn mint(
     primary: &str,
     secondary: &str,

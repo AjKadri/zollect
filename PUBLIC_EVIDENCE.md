@@ -165,3 +165,35 @@ Error: FAIL LIGHTWALLETD_INCOMPLETE_INFO server=primary info_height=3531220 tip_
 ```
 
 Stage (a): FAIL. Item 3, FINAL sealing, and the mainnet checker were stopped by the two-server refusal rule.
+
+## Known-txid verification timing
+
+```text
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK carrier-m2 1 TXID_LIST_FILE
+Error: FAIL LIGHTWALLETD_INCOMPLETE_INFO server=primary info_height=3531228 tip_height=3531229
+real 3.88
+
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK carrier-m2 1 TXID_LIST_FILE
+Error: FAIL supply not sealed with any items
+VERIFY_TIMING mode=verify-any-item tx_count=2 status=FAIL elapsed_ms=803
+```
+
+The two-server fast path fetched only the known bootstrap and item-1 transactions. The transport and checker path completed under 10 seconds, but the requested item remained semantically unverified because the interrupted mainnet run has no FINAL seal. No `VALID` claim is made.
+
+```text
+COMMAND carrier-verifier mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS PROOF_FILE speed-check-20261026
+HELD collection=carrier-m2 item=1 hop=0 txid=e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6 action=2 cmx=b963e132cf150599a5ad6eefc149e3eab9c7cbeb71398281bf0b33e85dca3a25 nullifier=444703a4b5a992cd473b32773b12bc084abb6b81d72e4b273a9ff9b13b75f90a control_signature=VALID
+VERIFY_TIMING mode=challenge-proof tx_count=2 elapsed_ms=769
+```
+
+Challenge proof: PASS, under 10 seconds. No mainnet transaction was signed or broadcast by the verification benchmark.
+
+Final release binary confirmation:
+
+```text
+Error: FAIL LIGHTWALLETD_INCOMPLETE_INFO server=primary info_height=3531239 tip_height=3531240
+real 0.45
+
+HELD collection=carrier-m2 item=1 hop=0 txid=e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6 action=2 cmx=b963e132cf150599a5ad6eefc149e3eab9c7cbeb71398281bf0b33e85dca3a25 nullifier=444703a4b5a992cd473b32773b12bc084abb6b81d72e4b273a9ff9b13b75f90a control_signature=VALID
+VERIFY_TIMING mode=challenge-proof tx_count=2 elapsed_ms=766
+```

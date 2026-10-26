@@ -1,19 +1,24 @@
 use super::*;
 use orchard::primitives::redpallas::{Signature, SpendAuth, VerificationKey};
+use zcash_protocol::consensus::Parameters;
 
 pub(crate) fn message(challenge: &str, txid: &str, action: usize, cmx: &str, nf: &str) -> Vec<u8> {
     format!("zecathon-carrier-control-v1|{challenge}|{txid}|{action}|{cmx}|{nf}").into_bytes()
 }
 
-fn load_proof(path: &str) -> Result<(Value, FullViewingKey)> {
+fn load_proof_for<N: Parameters>(path: &str, network: &N) -> Result<(Value, FullViewingKey)> {
     let proof: Value = serde_json::from_slice(&fs::read(path)?)?;
     let ufvk =
-        UnifiedFullViewingKey::decode(&network(), proof["ufvk"].as_str().context("Missing UFVK")?)
+        UnifiedFullViewingKey::decode(network, proof["ufvk"].as_str().context("Missing UFVK")?)
             .map_err(|_| anyhow!("Invalid proof UFVK"))?;
     Ok((
         proof,
         ufvk.orchard().context("Missing Orchard key")?.clone(),
     ))
+}
+
+fn load_proof(path: &str) -> Result<(Value, FullViewingKey)> {
+    load_proof_for(path, &network())
 }
 
 struct ProofTarget {
@@ -33,6 +38,16 @@ fn validate_proof(
     secondary_url: Option<&str>,
 ) -> Result<ProofTarget> {
     let (proof, fvk) = load_proof(file)?;
+    let txs = load_chain_for_key(url, &fvk, secondary_url)?;
+    validate_proof_data(&proof, &fvk, &txs, expected_challenge)
+}
+
+fn validate_proof_data(
+    proof: &Value,
+    fvk: &FullViewingKey,
+    txs: &[ChainTx],
+    expected_challenge: &str,
+) -> Result<ProofTarget> {
     ensure!(
         proof["challenge"] == expected_challenge,
         "FAIL wrong challenge"
@@ -42,7 +57,6 @@ fn validate_proof(
     ensure!(item > 0, "FAIL invalid item number");
     let txid = proof["txid"].as_str().context("Missing txid")?.to_owned();
     let action = proof["action"].as_u64().context("Missing action")? as usize;
-    let txs = load_chain_for_key(url, &fvk, secondary_url)?;
     let tx = txs
         .iter()
         .find(|t| t.txid == txid)
@@ -84,7 +98,11 @@ fn validate_proof(
                 .any(|t| t.txid == txid && t.notes.iter().any(|(i, n)| *i == action && n.owned)),
         "FAIL proof note is not the vault's single item"
     );
-    let cmx = hex::encode(tx.commitments[action]);
+    let cmx = hex::encode(
+        *tx.commitments
+            .get(action)
+            .context("FAIL proof action out of range")?,
+    );
     let nullifier = hex::encode(n.note.nullifier(&fvk).to_bytes());
     ensure!(
         proof["cmx"] == cmx && proof["nullifier"] == nullifier,
@@ -107,7 +125,7 @@ fn validate_proof(
         .find(|t| t.nullifiers.contains(&nullifier))
         .map(|t| t.txid.clone());
     Ok(ProofTarget {
-        fvk,
+        fvk: fvk.clone(),
         txid,
         action,
         memo,
@@ -124,6 +142,41 @@ pub(crate) fn verify_proof(
     secondary_url: Option<&str>,
 ) -> Result<()> {
     let target = validate_proof(url, file, expected_challenge, secondary_url)?;
+    if let Some(spending_txid) = target.spent_by {
+        println!(
+            "SPENT collection={} item={} hop={} txid={} action={} nullifier={} spending_txid={}",
+            target.memo.collection,
+            target.memo.item.unwrap(),
+            target.memo.hop,
+            target.txid,
+            target.action,
+            target.nullifier,
+            spending_txid
+        );
+    } else {
+        println!(
+            "HELD collection={} item={} hop={} txid={} action={} cmx={} nullifier={} control_signature=VALID",
+            target.memo.collection,
+            target.memo.item.unwrap(),
+            target.memo.hop,
+            target.txid,
+            target.action,
+            target.cmx,
+            target.nullifier
+        );
+    }
+    Ok(())
+}
+
+#[cfg(feature = "mainnet")]
+pub(crate) fn verify_proof_with_network<N: Parameters>(
+    file: &str,
+    expected_challenge: &str,
+    txs: &[ChainTx],
+    network: &N,
+) -> Result<()> {
+    let (proof, fvk) = load_proof_for(file, network)?;
+    let target = validate_proof_data(&proof, &fvk, txs, expected_challenge)?;
     if let Some(spending_txid) = target.spent_by {
         println!(
             "SPENT collection={} item={} hop={} txid={} action={} nullifier={} spending_txid={}",
