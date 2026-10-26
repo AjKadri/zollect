@@ -128,6 +128,13 @@ NO SALE TXID
 
 No post-sale checker output exists because no sale was observed as mined.
 
+```text
+COMMAND carrier-verifier mainnet-sale-prepare PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF KEMI_BUYER_FUNDING_WALLET KEMI_BUYER_IDENTITY KEMI_SALE_VAULT TOBI_PAYMENT 3530540 20000 85000 PCZT_OUTPUT
+Error: Buyer vault must be fresh and separate from seller vault
+```
+
+No PCZT, seller signature, broadcast, sale txid, or post-sale checker output was produced. Preparation stopped because the buyer funding wallet and configured buyer vault were not separate.
+
 ## O2
 
 ```text

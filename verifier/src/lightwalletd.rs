@@ -197,6 +197,7 @@ impl Endpoint {
         })
     }
 
+    #[cfg(not(feature = "prepare-only"))]
     fn send_transaction(&self, raw: Vec<u8>) -> Result<()> {
         let url = self.url.clone();
         run(async move {
@@ -425,6 +426,7 @@ impl MainnetLightwalletd {
         Ok((snapshot, primary_tree, transactions))
     }
 
+    #[cfg(not(feature = "prepare-only"))]
     pub(crate) fn send_transaction(&self, raw: Vec<u8>) -> Result<()> {
         self.consistent_snapshot()?;
         self.primary.send_transaction(raw)
