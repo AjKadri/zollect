@@ -73,9 +73,18 @@ fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
         .map_err(|_| anyhow!("Unable to derive mainnet account"))
 }
 
+fn unified_address(address: &str) -> Result<UnifiedAddress> {
+    let trimmed = address.trim();
+    ensure!(
+        trimmed.starts_with("u1"),
+        "Mainnet recipient address must start with u1"
+    );
+    UnifiedAddress::decode(&MAIN_NETWORK, trimmed)
+        .map_err(|e| anyhow!("Invalid mainnet recipient address: {e:?}"))
+}
+
 fn address(address: &str) -> Result<orchard::Address> {
-    let unified = UnifiedAddress::decode(&MAIN_NETWORK, address.trim())
-        .map_err(|e| anyhow!("Invalid mainnet recipient address: {e:?}"))?;
+    let unified = unified_address(address)?;
     unified
         .orchard()
         .copied()
@@ -98,6 +107,17 @@ fn receiver_types(address: &UnifiedAddress) -> String {
     } else {
         receivers.join(",")
     }
+}
+
+fn address_summary(unified: &UnifiedAddress) -> (String, String) {
+    (
+        unified
+            .encode(&MAIN_NETWORK)
+            .chars()
+            .take(8)
+            .collect(),
+        receiver_types(unified),
+    )
 }
 
 pub(crate) fn diagnose_address(argument: &str, address_file: &str) -> Result<()> {
@@ -1097,18 +1117,36 @@ pub(crate) fn sale_prepare(
     );
     let (funding_tx, funding_action, funding_note, _, funding_value) =
         unspent_positive(&buyer_txs, &buyer_fvk)?;
-    let buyer_vault = address(buyer_vault_address)?;
+    let buyer_vault_unified = unified_address(buyer_vault_address)?;
+    let buyer_vault = buyer_vault_unified
+        .orchard()
+        .copied()
+        .context("Mainnet address has no Orchard receiver")?;
     let seller_recipient = seller_note.note.recipient().to_raw_address_bytes();
     ensure!(
         buyer_vault.to_raw_address_bytes() != seller_recipient
             && buyer_fvk.scope_for_address(&buyer_vault).is_none(),
         "Buyer vault must be fresh and separate from seller vault"
     );
-    let seller_payment = address(seller_payment_address)?;
+    let seller_payment_unified = unified_address(seller_payment_address)?;
+    let seller_payment = seller_payment_unified
+        .orchard()
+        .copied()
+        .context("Mainnet address has no Orchard receiver")?;
     ensure!(
         seller_payment.to_raw_address_bytes() != seller_recipient
             && seller_payment.to_raw_address_bytes() != buyer_vault.to_raw_address_bytes(),
         "Seller payment must be separate from both vaults"
+    );
+    ensure!(
+        seller_fvk.scope_for_address(&seller_payment).is_some(),
+        "Seller payment address is not owned by seller funding wallet"
+    );
+    let (buyer_prefix, buyer_receivers) = address_summary(&buyer_vault_unified);
+    let (payment_prefix, payment_receivers) = address_summary(&seller_payment_unified);
+    println!(
+        "SALE_RECIPIENTS buyer_vault_prefix8={:?} buyer_vault_receivers={} seller_payment_prefix8={:?} seller_payment_receivers={} seller_payment_wallet=VERIFIED",
+        buyer_prefix, buyer_receivers, payment_prefix, payment_receivers
     );
     let seller_path = witness(
         &seller_txs,
@@ -1438,6 +1476,22 @@ pub(crate) fn sale_sign(
         carrier_output.value().as_ref() == Some(&0u64),
         "Sale carrier output must be zero value"
     );
+    let buyer_vault_recipient = carrier_output
+        .recipient()
+        .as_ref()
+        .copied()
+        .and_then(|bytes| {
+            Option::<orchard::Address>::from(orchard::Address::from_raw_address_bytes(&bytes))
+        })
+        .context("Sale carrier output recipient missing")?;
+    let buyer_vault_unified = UnifiedAddress::from_receivers(
+        Some(buyer_vault_recipient),
+        None,
+        None,
+        None,
+        None,
+    )
+    .context("Sale carrier output recipient cannot encode as mainnet address")?;
     let expected_memo = carrier_memo(collection, item, hop.checked_add(1).context("Hop overflow")?)?;
     let output_memo = match carrier_output.enc_ciphertext() {
         EncCiphertext::MemoPlaintext(memo) => memo.to_memo(),
@@ -1447,7 +1501,27 @@ pub(crate) fn sale_sign(
         output_memo == *expected_memo.as_array(),
         "Sale carrier output memo does not preserve ownership metadata"
     );
-    let seller_payment = address(seller_payment_address)?;
+    let seller_payment_unified = unified_address(seller_payment_address)?;
+    let seller_payment = seller_payment_unified
+        .orchard()
+        .copied()
+        .context("Mainnet address has no Orchard receiver")?;
+    let seller_usk = spending_key(seller_wallet, seller_identity)?;
+    let seller_funding_fvk = FullViewingKey::from(seller_usk.orchard());
+    ensure!(
+        seller_funding_fvk.scope_for_address(&seller_payment).is_some(),
+        "Seller payment address is not owned by seller funding wallet"
+    );
+    ensure!(
+        seller_payment.to_raw_address_bytes() != seller_recipient,
+        "Seller payment address must be separate from seller item vault"
+    );
+    let (buyer_prefix, buyer_receivers) = address_summary(&buyer_vault_unified);
+    let (payment_prefix, payment_receivers) = address_summary(&seller_payment_unified);
+    println!(
+        "SALE_RECIPIENTS buyer_vault_prefix8={:?} buyer_vault_receivers={} seller_payment_prefix8={:?} seller_payment_receivers={} seller_payment_wallet=VERIFIED",
+        buyer_prefix, buyer_receivers, payment_prefix, payment_receivers
+    );
     let mut inputs = 0u64;
     let mut outputs = 0u64;
     let mut matching_payments = 0usize;
@@ -1519,7 +1593,6 @@ pub(crate) fn sale_sign(
     println!(
         "FEE fee_zat={final_fee} sale_price_zat={price} running_total_before_zat={running_total} projected_total_zat={projected} tx_cap_zat={M2_TX_FEE_CAP_ZAT} cap_zat={M2_CAP_ZAT}"
     );
-    let seller_usk = spending_key(seller_wallet, seller_identity)?;
     let mut signer = Signer::new(pczt).map_err(|e| anyhow!("Seller signer setup: {e:?}"))?;
     signer
         .sign_ironwood(
