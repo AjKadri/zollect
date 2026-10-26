@@ -131,3 +131,18 @@ EXPLORER_CHECK HTTP_CODE=403 BYTES=162
 ```
 
 Stage (a): FAIL. Monitoring stopped at the first server disagreement. No rebroadcast or funding-note spend followed.
+
+## Corrected mainnet lookup and stage-(a) stop
+
+```text
+COMMAND carrier-verifier mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS 89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16
+MAINNET TRANSACTION txid=89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16 height=3530585 bytes=9166
+
+TEST known_mined_mainnet_transaction_is_found_on_both_servers
+PASS height=3530585 data_present=true
+
+COMMAND carrier-verifier mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY 3530540 carrier-m2 1 ITEM_1_VAULT 10000
+Error: Computed mint fee changed during build
+```
+
+Stage (a): FAIL. The corrected item-1 attempt stopped before fee output and broadcast. No alternate settings or further mainnet spending followed.

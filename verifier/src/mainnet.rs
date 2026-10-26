@@ -14,6 +14,7 @@ use std::{
     path::Path,
 };
 use transparent::builder::TransparentSigningSet;
+use zcash_client_backend::proto::service::RawTransaction;
 use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_primitives::{
     transaction::fees::zip317,
@@ -75,11 +76,19 @@ fn load_chain(
     let initial_tree = tree_state
         .ironwood_tree()
         .map_err(|e| anyhow!("Invalid Ironwood tree state: {e:?}"))?;
+    let txs = decode_chain(&rows, fvk)?;
+    Ok((txs, initial_tree))
+}
+
+fn decode_chain(
+    rows: &[(u32, Vec<u8>, RawTransaction)],
+    fvk: &FullViewingKey,
+) -> Result<Vec<ChainTx>> {
     let ivks = [fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal)];
     let ovks = [fvk.to_ovk(Scope::External), fvk.to_ovk(Scope::Internal)];
     let mut txs = Vec::new();
     for (height, _, raw) in rows {
-        let height = BlockHeight::from_u32(height);
+        let height = BlockHeight::from_u32(*height);
         let tx = Transaction::read(
             raw.data.as_slice(),
             BranchId::for_height(&MAIN_NETWORK, height),
@@ -125,7 +134,26 @@ fn load_chain(
             });
         }
     }
-    Ok((txs, initial_tree))
+    Ok(txs)
+}
+
+fn load_chain_pair(
+    servers: &MainnetLightwalletd,
+    birthday: u32,
+    issuer_fvk: &FullViewingKey,
+    funding_fvk: &FullViewingKey,
+) -> Result<(
+    Vec<ChainTx>,
+    Vec<ChainTx>,
+    CommitmentTree<MerkleHashOrchard, 32>,
+)> {
+    let (_, tree_state, rows) = servers.consistent_chain_data(birthday)?;
+    let initial_tree = tree_state
+        .ironwood_tree()
+        .map_err(|e| anyhow!("Invalid Ironwood tree state: {e:?}"))?;
+    let issuer_txs = decode_chain(&rows, issuer_fvk)?;
+    let funding_txs = decode_chain(&rows, funding_fvk)?;
+    Ok((issuer_txs, funding_txs, initial_tree))
 }
 
 fn witness(
@@ -267,12 +295,8 @@ pub(crate) fn mint(
 
     let snapshot = servers.consistent_snapshot()?;
     let height = block_height(snapshot.height)?;
-    let (_, tree_state, _rows) = servers.consistent_chain_data(birthday)?;
-    let initial_tree = tree_state
-        .ironwood_tree()
-        .map_err(|e| anyhow!("Invalid Ironwood tree state: {e:?}"))?;
-    let (issuer_txs, _) = load_chain(&servers, birthday, &issuer_fvk)?;
-    let (funding_txs, _) = load_chain(&servers, birthday, &funding_fvk)?;
+    let (issuer_txs, funding_txs, initial_tree) =
+        load_chain_pair(&servers, birthday, &issuer_fvk, &funding_fvk)?;
     let (funding_txid, funding_action, funding_note, _, funding_value) =
         unspent_positive(&funding_txs, &funding_fvk)?;
     let funding_path = witness(
