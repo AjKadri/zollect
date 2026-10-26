@@ -6,7 +6,7 @@ pub(crate) fn message(challenge: &str, txid: &str, action: usize, cmx: &str, nf:
     format!("zecathon-carrier-control-v1|{challenge}|{txid}|{action}|{cmx}|{nf}").into_bytes()
 }
 
-fn load_proof_for<N: Parameters>(path: &str, network: &N) -> Result<(Value, FullViewingKey)> {
+pub(crate) fn load_proof_for<N: Parameters>(path: &str, network: &N) -> Result<(Value, FullViewingKey)> {
     let proof: Value = serde_json::from_slice(&fs::read(path)?)?;
     let ufvk =
         UnifiedFullViewingKey::decode(network, proof["ufvk"].as_str().context("Missing UFVK")?)
@@ -257,6 +257,60 @@ pub(crate) fn verify_link(
         "FAIL origin unexpectedly spends itself"
     );
     let successor_tx = owner_txs
+        .iter()
+        .find(|t| t.txid == bob.txid)
+        .context("FAIL successor not mined")?;
+    ensure!(
+        successor_tx.nullifiers.get(bob.action) == Some(&alice.nullifier),
+        "FAIL successor is not in the spent carrier's Action"
+    );
+    println!(
+        "LINK VALID collection={} item={} spent_nullifier={} successor_txid={} same_action={} memo={}|{}|{}|{}",
+        alice.memo.collection,
+        alice.memo.item.unwrap(),
+        alice.nullifier,
+        bob.txid,
+        bob.action,
+        CARRIER_MEMO_PREFIX,
+        bob.memo.collection,
+        bob.memo.item.unwrap(),
+        bob.memo.hop
+    );
+    Ok(())
+}
+
+#[cfg(feature = "mainnet")]
+pub(crate) fn verify_link_with_network<N: Parameters>(
+    alice_file: &str,
+    bob_file: &str,
+    expected_challenge: &str,
+    alice_txs: &[ChainTx],
+    bob_txs: &[ChainTx],
+    network: &N,
+) -> Result<()> {
+    let (alice_proof, alice_fvk) = load_proof_for(alice_file, network)?;
+    let (bob_proof, bob_fvk) = load_proof_for(bob_file, network)?;
+    let alice = validate_proof_data(&alice_proof, &alice_fvk, alice_txs, expected_challenge)?;
+    let bob = validate_proof_data(&bob_proof, &bob_fvk, bob_txs, expected_challenge)?;
+    ensure!(alice.spent_by.is_some(), "FAIL old owner proof is not SPENT");
+    ensure!(bob.spent_by.is_none(), "FAIL successor proof is SPENT");
+    ensure!(
+        alice.memo.collection == bob.memo.collection && alice.memo.item == bob.memo.item,
+        "FAIL successor collection or item changed"
+    );
+    ensure!(
+        bob.memo.hop == alice.memo.hop.checked_add(1).context("FAIL hop overflow")?,
+        "FAIL successor hop is not previous hop plus one"
+    );
+    let old_tx = alice_txs
+        .iter()
+        .find(|t| t.txid == alice.txid)
+        .context("FAIL origin not mined")?;
+    ensure!(
+        old_tx.nullifiers.iter().all(|nf| nf != &alice.nullifier),
+        "FAIL origin unexpectedly spends itself"
+    );
+    let successor_tx = alice_txs
         .iter()
         .find(|t| t.txid == bob.txid)
         .context("FAIL successor not mined")?;

@@ -636,6 +636,39 @@ fn mainnet_verify_proof(
     Ok(())
 }
 
+#[cfg(feature = "mainnet")]
+fn mainnet_verify_link(
+    primary: &str,
+    secondary: &str,
+    alice_file: &str,
+    bob_file: &str,
+    challenge: &str,
+    txid_file: &str,
+) -> Result<()> {
+    let started = Instant::now();
+    let servers = lightwalletd::MainnetLightwalletd::new(primary, secondary)?;
+    let txids = read_known_txids(txid_file)?;
+    let rows = servers.known_transactions(&txids)?;
+    let (_, alice_fvk) = ownership::load_proof_for(alice_file, &MAIN_NETWORK)?;
+    let (_, bob_fvk) = ownership::load_proof_for(bob_file, &MAIN_NETWORK)?;
+    let alice_txs = decode_known_mainnet_transactions(&rows, &alice_fvk)?;
+    let bob_txs = decode_known_mainnet_transactions(&rows, &bob_fvk)?;
+    ownership::verify_link_with_network(
+        alice_file,
+        bob_file,
+        challenge,
+        &alice_txs,
+        &bob_txs,
+        &MAIN_NETWORK,
+    )?;
+    println!(
+        "VERIFY_TIMING mode=link tx_count={} elapsed_ms={}",
+        txids.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(())
+}
+
 fn memo_text(memo: &[u8; 512]) -> &str {
     std::str::from_utf8(memo)
         .unwrap_or("")
@@ -840,6 +873,15 @@ fn main() -> Result<()> {
             &args[5],
             args.get(6).map(String::as_str),
         ),
+        #[cfg(feature = "mainnet")]
+        Some("mainnet-link") if args.len() == 8 => mainnet_verify_link(
+            &args[2],
+            &args[3],
+            &args[4],
+            &args[5],
+            &args[6],
+            &args[7],
+        ),
         #[cfg(all(feature = "mainnet", feature = "sender"))]
         Some("mainnet-ufvk") if args.len() == 5 => {
             mainnet::write_ufvk(&args[2], &args[3], &args[4])
@@ -1025,7 +1067,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "trustee")]
         Some("fund-extract") if args.len() == 4 => trustee::extract(&args[2], &args[3]),
         _ => bail!(
-            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS | mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS TXID | mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK_FILE COLLECTION ITEM TXID_LIST_FILE | mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS PROOF_FILE CHALLENGE [TXID_LIST_FILE] | mainnet-ufvk MAINNET_WALLET IDENTITY OUTPUT | mainnet-address-diagnose ARGUMENT ADDRESS_FILE | mainnet-issuance PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK COLLECTION BIRTHDAY | mainnet-attest PRIMARY_HTTPS SECONDARY_HTTPS MAINNET_WALLET IDENTITY TXID ACTION CHALLENGE OUTPUT COLLECTION ITEM TXID_LIST_FILE | mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY COLLECTION SUBJECT DESTINATION RUNNING_TOTAL | mainnet-transfer PRIMARY_HTTPS SECONDARY_HTTPS VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY RUNNING_TOTAL | mainnet-sale-prepare PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF BUYER_FUNDING_WALLET BUYER_FUNDING_IDENTITY BUYER_VAULT SELLER_PAYMENT BIRTHDAY PRICE RUNNING_TOTAL PCZT_OUTPUT | mainnet-sale-sign PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF SELLER_WALLET SELLER_IDENTITY SELLER_PAYMENT BIRTHDAY PRICE CARRIER_ACTION BUYER_ACTION PCZT_INPUT RAW_OUTPUT RUNNING_TOTAL | mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS SELLER_WALLET SELLER_ID BUYER_FUNDING_WALLET BUYER_FUNDING_ID ORIGIN_TX ORIGIN_ACTION BUYER_VAULT SELLER_PAYMENT BIRTHDAY PRICE RUNNING_TOTAL | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
+            "Usage: carrier-verifier burn | issuance RPC_URL ISSUER_UFVK_FILE COLLECTION [SECONDARY_RPC_URL] | proof RPC_URL PROOF_FILE CHALLENGE [SECONDARY_RPC_URL] | link RPC_URL ISSUER_UFVK_FILE ALICE_PROOF BOB_PROOF [SECONDARY_RPC_URL] | mainnet-snapshot PRIMARY_HTTPS SECONDARY_HTTPS | mainnet-tx PRIMARY_HTTPS SECONDARY_HTTPS TXID | mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK_FILE COLLECTION ITEM TXID_LIST_FILE | mainnet-proof PRIMARY_HTTPS SECONDARY_HTTPS PROOF_FILE CHALLENGE [TXID_LIST_FILE] | mainnet-link PRIMARY_HTTPS SECONDARY_HTTPS ALICE_PROOF BOB_PROOF CHALLENGE TXID_LIST_FILE | mainnet-ufvk MAINNET_WALLET IDENTITY OUTPUT | mainnet-address-diagnose ARGUMENT ADDRESS_FILE | mainnet-issuance PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK COLLECTION BIRTHDAY | mainnet-attest PRIMARY_HTTPS SECONDARY_HTTPS MAINNET_WALLET IDENTITY TXID ACTION CHALLENGE OUTPUT COLLECTION ITEM TXID_LIST_FILE | mainnet-mint PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_WALLET ISSUER_IDENTITY FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY COLLECTION SUBJECT DESTINATION RUNNING_TOTAL | mainnet-transfer PRIMARY_HTTPS SECONDARY_HTTPS VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT FUNDING_WALLET FUNDING_IDENTITY BIRTHDAY RUNNING_TOTAL | mainnet-sale-prepare PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF BUYER_FUNDING_WALLET BUYER_FUNDING_IDENTITY BUYER_VAULT SELLER_PAYMENT BIRTHDAY PRICE RUNNING_TOTAL PCZT_OUTPUT | mainnet-sale-sign PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF SELLER_WALLET SELLER_IDENTITY SELLER_PAYMENT BIRTHDAY PRICE CARRIER_ACTION BUYER_ACTION PCZT_INPUT RAW_OUTPUT RUNNING_TOTAL | mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS SELLER_WALLET SELLER_ID BUYER_FUNDING_WALLET BUYER_FUNDING_ID ORIGIN_TX ORIGIN_ACTION BUYER_VAULT SELLER_PAYMENT BIRTHDAY PRICE RUNNING_TOTAL | attack-double-spend RPC_URL VAULT_WALLET VAULT_ID ORIGIN_TX ORIGIN_ACTION RECIPIENT OUTPUT FUNDING_WALLET FUNDING_ID [SECONDARY_RPC_URL]"
         ),
     }
 }
