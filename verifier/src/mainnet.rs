@@ -75,11 +75,71 @@ fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
 
 fn address(address: &str) -> Result<orchard::Address> {
     let unified = UnifiedAddress::decode(&MAIN_NETWORK, address.trim())
-        .map_err(|_| anyhow!("Invalid mainnet recipient address"))?;
+        .map_err(|e| anyhow!("Invalid mainnet recipient address: {e:?}"))?;
     unified
         .orchard()
         .copied()
         .context("Mainnet address has no Orchard receiver")
+}
+
+fn receiver_types(address: &UnifiedAddress) -> String {
+    let mut receivers = Vec::new();
+    if address.orchard().is_some() {
+        receivers.push("IronwoodOrOrchard");
+    }
+    if address.sapling().is_some() {
+        receivers.push("Sapling");
+    }
+    if address.transparent().is_some() {
+        receivers.push("transparent");
+    }
+    if receivers.is_empty() {
+        "none".to_owned()
+    } else {
+        receivers.join(",")
+    }
+}
+
+pub(crate) fn diagnose_address(argument: &str, address_file: &str) -> Result<()> {
+    let raw = fs::read_to_string(address_file)?;
+    let trimmed = raw.trim();
+    let prefix8: String = raw.chars().take(8).collect();
+    let leading_whitespace = raw.chars().next().is_some_and(char::is_whitespace);
+    let trailing_whitespace = raw.chars().next_back().is_some_and(char::is_whitespace);
+    let mainnet = UnifiedAddress::decode(&MAIN_NETWORK, trimmed);
+    let testnet = UnifiedAddress::decode(&zcash_protocol::consensus::TEST_NETWORK, trimmed);
+    let regtest = UnifiedAddress::decode(&network(), trimmed);
+    let (network, receivers) = if let Ok(address) = &mainnet {
+        ("mainnet", receiver_types(address))
+    } else if let Ok(address) = &regtest {
+        ("regtest", receiver_types(address))
+    } else if let Ok(address) = &testnet {
+        ("testnet", receiver_types(address))
+    } else {
+        ("unknown", "none".to_owned())
+    };
+    println!(
+        "ADDRESS_DIAGNOSTIC argument={} prefix8={:?} length={} leading_whitespace={} trailing_whitespace={} network={} receivers={}",
+        argument,
+        prefix8,
+        raw.len(),
+        leading_whitespace,
+        trailing_whitespace,
+        network,
+        receivers
+    );
+    if let Err(error) = mainnet {
+        println!("MAINNET_PARSE_ERROR={error:?}");
+    }
+    if network == "unknown" {
+        if let Err(error) = regtest {
+            println!("REGTEST_PARSE_ERROR={error:?}");
+        }
+        if let Err(error) = testnet {
+            println!("TESTNET_PARSE_ERROR={error:?}");
+        }
+    }
+    Ok(())
 }
 
 fn load_chain(
