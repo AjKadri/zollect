@@ -8,7 +8,6 @@ use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitnes
 use orchard::{keys::SpendAuthorizingKey, tree::MerkleHashOrchard};
 use pczt::{
     Pczt,
-    orchard::EncCiphertext,
     roles::{
         creator::Creator,
         io_finalizer::IoFinalizer,
@@ -1442,6 +1441,15 @@ pub(crate) fn sale_sign(
         "Seller item vault must hold exactly one item and no other notes; found={}",
         seller_vault_notes.len()
     );
+    let seller_vault_nullifiers: HashSet<_> = seller_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter())
+        .filter(|(_, note)| {
+            hex::encode(note.note.recipient().to_raw_address_bytes())
+                == hex::encode(seller_recipient)
+        })
+        .map(|(_, note)| hex::encode(note.note.nullifier(&seller_fvk).to_bytes()))
+        .collect();
     let seller_nullifier = hex::encode(seller_note.note.nullifier(&seller_fvk).to_bytes());
     ensure!(
         !seller_txs
@@ -1492,15 +1500,6 @@ pub(crate) fn sale_sign(
         None,
     )
     .context("Sale carrier output recipient cannot encode as mainnet address")?;
-    let expected_memo = carrier_memo(collection, item, hop.checked_add(1).context("Hop overflow")?)?;
-    let output_memo = match carrier_output.enc_ciphertext() {
-        EncCiphertext::MemoPlaintext(memo) => memo.to_memo(),
-        EncCiphertext::Encrypted(_) => bail!("Sale carrier memo is not available for approval"),
-    };
-    ensure!(
-        output_memo == *expected_memo.as_array(),
-        "Sale carrier output memo does not preserve ownership metadata"
-    );
     let seller_payment_unified = unified_address(seller_payment_address)?;
     let seller_payment = seller_payment_unified
         .orchard()
@@ -1525,6 +1524,17 @@ pub(crate) fn sale_sign(
     let mut inputs = 0u64;
     let mut outputs = 0u64;
     let mut matching_payments = 0usize;
+    let mut seller_payment_outputs = 0usize;
+    let vault_spends = actions
+        .iter()
+        .filter(|action| {
+            seller_vault_nullifiers.contains(&hex::encode(action.spend().nullifier()))
+        })
+        .count();
+    ensure!(
+        vault_spends == 1,
+        "REFUSED sale must spend exactly one seller vault note"
+    );
     Verifier::new(pczt.clone())
         .with_ironwood::<String, _>(|bundle| {
             bundle.verify_cross_address_restriction()?;
@@ -1554,6 +1564,9 @@ pub(crate) fn sale_sign(
                     .checked_add(output_value)
                     .ok_or_else(|| OrchardError::Custom("Sale output sum overflow".into()))?;
                 if let Some(to) = action.output().recipient().as_ref() {
+                    if *to == seller_payment {
+                        seller_payment_outputs += 1;
+                    }
                     if *to == seller_payment && output_value == price {
                         matching_payments += 1;
                     }
@@ -1563,7 +1576,7 @@ pub(crate) fn sale_sign(
         })
         .map_err(|e| anyhow!("Sale approval check: {e:?}"))?;
     ensure!(
-        matching_payments == 1,
+        seller_payment_outputs == 1 && matching_payments == 1,
         "REFUSED seller payment does not match listed price exactly once"
     );
     let expected_fee = zip317::FeeRule::standard().marginal_fee().into_u64()

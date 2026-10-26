@@ -4,7 +4,6 @@ use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitnes
 use orchard::{keys::SpendAuthorizingKey, tree::MerkleHashOrchard};
 use pczt::{
     Pczt,
-    orchard::EncCiphertext,
     roles::{
         creator::Creator,
         io_finalizer::IoFinalizer,
@@ -48,6 +47,16 @@ fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
     let seed = Zeroizing::new(mnemonic.to_seed(""));
     UnifiedSpendingKey::from_seed(&network(), &seed[..], zip32::AccountId::ZERO)
         .map_err(|_| anyhow!("Unable to derive regtest account"))
+}
+
+fn payment_matches(
+    recipient: Option<&[u8; 43]>,
+    value: Option<u64>,
+    expected_recipient: &[u8; 43],
+    expected_value: u64,
+) -> bool {
+    recipient.is_some_and(|recipient| recipient == expected_recipient)
+        && value == Some(expected_value)
 }
 
 pub(crate) fn witness(
@@ -749,6 +758,12 @@ pub(crate) fn sale_sign(
         "Seller item vault must hold exactly one item and no other notes; found={}",
         seller_vault_notes.len()
     );
+    let seller_vault_nullifiers: HashSet<_> = seller_txs
+        .iter()
+        .flat_map(|t| t.notes.iter())
+        .filter(|(_, n)| n.owned && n.note.recipient().to_raw_address_bytes() == seller_recipient)
+        .map(|(_, n)| hex::encode(n.note.nullifier(&seller_fvk).to_bytes()))
+        .collect();
     let seller_nullifier = hex::encode(seller_note.note.nullifier(&seller_fvk).to_bytes());
     ensure!(
         !seller_txs
@@ -794,19 +809,6 @@ pub(crate) fn sale_sign(
         carrier_recipient != &seller_recipient,
         "Sale carrier output must leave the seller vault"
     );
-    let expected_memo = carrier_memo(
-        collection,
-        item,
-        hop.checked_add(1).context("Hop overflow")?,
-    )?;
-    let output_memo = match carrier_output.enc_ciphertext() {
-        EncCiphertext::MemoPlaintext(memo) => memo.to_memo(),
-        EncCiphertext::Encrypted(_) => bail!("Sale carrier memo is not available for approval"),
-    };
-    ensure!(
-        output_memo == *expected_memo.as_array(),
-        "Sale carrier output memo does not preserve ownership metadata"
-    );
     let seller_payment = UnifiedAddress::decode(&network(), seller_payment_address)
         .context("Invalid seller payment address")?;
     let seller_payment = *seller_payment
@@ -815,6 +817,17 @@ pub(crate) fn sale_sign(
     let mut inputs = 0u64;
     let mut outputs = 0u64;
     let mut matching_payments = 0usize;
+    let mut seller_payment_outputs = 0usize;
+    let vault_spends = actions
+        .iter()
+        .filter(|action| {
+            seller_vault_nullifiers.contains(&hex::encode(action.spend().nullifier()))
+        })
+        .count();
+    ensure!(
+        vault_spends == 1,
+        "REFUSED sale must spend exactly one seller vault note"
+    );
     Verifier::new(pczt.clone())
         .with_ironwood::<String, _>(|bundle| {
             bundle.verify_cross_address_restriction()?;
@@ -844,7 +857,17 @@ pub(crate) fn sale_sign(
                     .checked_add(output_value)
                     .ok_or_else(|| OrchardError::Custom("Sale output sum overflow".into()))?;
                 if let Some(to) = action.output().recipient().as_ref() {
-                    if *to == seller_payment && output_value == price {
+                    if *to == seller_payment {
+                        seller_payment_outputs += 1;
+                    }
+                    let recipient_raw = to.to_raw_address_bytes();
+                    let expected_raw = seller_payment.to_raw_address_bytes();
+                    if payment_matches(
+                        Some(&recipient_raw),
+                        Some(output_value),
+                        &expected_raw,
+                        price,
+                    ) {
                         matching_payments += 1;
                     }
                 }
@@ -853,7 +876,7 @@ pub(crate) fn sale_sign(
         })
         .map_err(|e| anyhow!("Sale approval check: {e:?}"))?;
     ensure!(
-        matching_payments == 1,
+        seller_payment_outputs == 1 && matching_payments == 1,
         "REFUSED seller payment does not match listed price exactly once"
     );
     let expected_fee = zip317::FeeRule::standard().marginal_fee().into_u64()
@@ -890,4 +913,33 @@ pub(crate) fn sale_sign(
         expected_fee
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regtest_seller_rejects_wrong_payment_amount_or_recipient() {
+        let seller_payment = [7u8; 43];
+        let wrong_recipient = [8u8; 43];
+        assert!(payment_matches(
+            Some(&seller_payment),
+            Some(100_000),
+            &seller_payment,
+            100_000
+        ));
+        assert!(!payment_matches(
+            Some(&seller_payment),
+            Some(99_999),
+            &seller_payment,
+            100_000
+        ));
+        assert!(!payment_matches(
+            Some(&wrong_recipient),
+            Some(100_000),
+            &seller_payment,
+            100_000
+        ));
+    }
 }

@@ -22,6 +22,19 @@ COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK carrier-20261024
 Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51d10d16aafbe007a302
 ```
 
+## Mainnet sale approval after memo-policy change
+
+```text
+COMMAND carrier-verifier mainnet-sale-sign PRIMARY_HTTPS SECONDARY_HTTPS SELLER_PROOF SELLER_WALLET SELLER_IDENTITY TOBI_PAYMENT 3531306 20000 1 0 SALE_PCZT SALE_RAW 85000
+SALE_RECIPIENTS buyer_vault_prefix8="u1j86r8v" buyer_vault_receivers=IronwoodOrOrchard seller_payment_prefix8="u1asrx5q" seller_payment_receivers=IronwoodOrOrchard seller_payment_wallet=VERIFIED
+FEE_FINAL fee_zat=15000 actions=3 buyer_signature=VERIFIED
+FEE fee_zat=15000 sale_price_zat=20000 running_total_before_zat=85000 projected_total_zat=120000 tx_cap_zat=20000 cap_zat=200000
+ATOMIC_SALE_READY txid=15b5d0579de1521c87216d4036bd4805b8309ed2c70ee957c6e6e228a3dce8ed carrier_action=1 buyer_action=0 payment_zat=20000 fee_zat=15000
+Error: lightwalletd rejected transaction: -25 transaction expired at block height 3531661; current height was 3531668
+```
+
+The candidate was signed locally but not broadcast or mined. No post-sale checker output exists for this attempt.
+
 ## Replacement mainnet collection: lagos-lights
 
 ```text
