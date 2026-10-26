@@ -146,3 +146,22 @@ Error: Computed mint fee changed during build
 ```
 
 Stage (a): FAIL. The corrected item-1 attempt stopped before fee output and broadcast. No alternate settings or further mainnet spending followed.
+
+## Approved fee guard and stage-(a) partial run
+
+```text
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 running_total_before_zat=10000 projected_total_zat=25000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6 fee_zat=15000 running_total_zat=25000 stage=mint subject=1
+MAINNET TRANSACTION txid=e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6 height=3531199 bytes=12322
+
+FEE_PRE_ESTIMATE fee_zat=15000 spends=2 outputs=3 actions=3
+FEE_FINAL fee_zat=15000 actions=3
+FEE fee_zat=15000 running_total_before_zat=25000 projected_total_zat=40000 tx_cap_zat=20000 cap_zat=200000
+BROADCAST txid=1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb fee_zat=15000 running_total_zat=40000 stage=mint subject=2
+MAINNET TRANSACTION txid=1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb height=0 bytes=12322
+Error: FAIL LIGHTWALLETD_INCOMPLETE_INFO server=primary info_height=3531220 tip_height=3531219
+```
+
+Stage (a): FAIL. Item 3, FINAL sealing, and the mainnet checker were stopped by the two-server refusal rule.

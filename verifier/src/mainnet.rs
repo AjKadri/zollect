@@ -32,6 +32,7 @@ use zcash_protocol::{
 use zeroize::Zeroizing;
 
 const M2_CAP_ZAT: u64 = 200_000;
+const M2_TX_FEE_CAP_ZAT: u64 = 20_000;
 const ISSUER_BOOTSTRAP_ZAT: u64 = 10_000;
 
 fn spending_key(wallet: &str, identity: &str) -> Result<UnifiedSpendingKey> {
@@ -242,6 +243,37 @@ fn build_signed(
         .map_err(|e| anyhow!("Mainnet build failed: {e:?}"))?
         .transaction()
         .clone())
+}
+
+fn mint_fee_shape(subject: &str) -> Result<(usize, usize, usize)> {
+    let spends = 2;
+    let outputs = if subject == "FINAL" { 2 } else { 3 };
+    let actions = orchard::builder::BundleType::DEFAULT
+        .num_actions(
+            orchard::bundle::BundleVersion::ironwood_v3().default_flags(),
+            spends,
+            outputs,
+        )
+        .map_err(|e| anyhow!("Mint action count failed: {e}"))?;
+    Ok((spends, outputs, actions))
+}
+
+fn final_mint_fee_zat(
+    subject: &str,
+    funding_value: u64,
+    issuer_value: u64,
+    funding_change: u64,
+) -> Result<u64> {
+    let input_value = if subject == "FINAL" {
+        funding_value
+            .checked_add(issuer_value)
+            .context("Mint input value overflow")?
+    } else {
+        funding_value
+    };
+    input_value
+        .checked_sub(funding_change)
+        .context("Final mint transaction fee underflow")
 }
 
 pub(crate) fn write_ufvk(wallet: &str, identity: &str, output: &str) -> Result<()> {
@@ -484,6 +516,7 @@ pub(crate) fn mint(
         .get_fee(&zip317::FeeRule::standard())
         .map_err(|e| anyhow!("Mint fee calculation failed: {e:?}"))?
         .into_u64();
+    let (probe_spends, probe_outputs, probe_actions) = mint_fee_shape(subject)?;
     let change = if subject == "FINAL" {
         funding_value
             .checked_add(issuer_value)
@@ -544,21 +577,58 @@ pub(crate) fn mint(
             SpendAuthorizingKey::from(funding_usk.orchard()),
         ],
     )?;
-    let actual_fee = funding_value + issuer_value - change;
-    ensure!(actual_fee == fee, "Computed mint fee changed during build");
+    let final_fee = final_mint_fee_zat(subject, funding_value, issuer_value, change)?;
+    let final_actions = tx
+        .ironwood_bundle()
+        .context("Final mint transaction has no Ironwood bundle")?
+        .actions()
+        .len();
+    println!(
+        "FEE_PRE_ESTIMATE fee_zat={fee} spends={probe_spends} outputs={probe_outputs} actions={probe_actions}"
+    );
+    println!("FEE_FINAL fee_zat={final_fee} actions={final_actions}");
     let projected = running_total
-        .checked_add(fee)
+        .checked_add(final_fee)
         .context("M2 total overflow")?;
     println!(
-        "FEE fee_zat={fee} running_total_before_zat={running_total} projected_total_zat={projected} cap_zat={M2_CAP_ZAT}"
+        "FEE fee_zat={final_fee} running_total_before_zat={running_total} projected_total_zat={projected} tx_cap_zat={M2_TX_FEE_CAP_ZAT} cap_zat={M2_CAP_ZAT}"
+    );
+    ensure!(
+        final_fee <= M2_TX_FEE_CAP_ZAT,
+        "ABORT M2 transaction fee cap exceeded final_fee_zat={} cap_zat={}",
+        final_fee,
+        M2_TX_FEE_CAP_ZAT
     );
     ensure!(projected <= M2_CAP_ZAT, "ABORT M2 fee cap exceeded");
     let mut raw = Vec::new();
     tx.write(&mut raw)?;
     servers.send_transaction(raw)?;
     println!(
-        "BROADCAST txid={} fee_zat={fee} running_total_zat={projected} stage=mint subject={subject}",
+        "BROADCAST txid={} fee_zat={final_fee} running_total_zat={projected} stage=mint subject={subject}",
         tx.txid()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mint_fee_shape_matches_non_final_and_final_outputs() {
+        assert_eq!(mint_fee_shape("1").unwrap(), (2, 3, 3));
+        assert_eq!(mint_fee_shape("FINAL").unwrap(), (2, 2, 2));
+    }
+
+    #[test]
+    fn final_fee_excludes_non_final_issuer_continuation_value() {
+        assert_eq!(
+            final_mint_fee_zat("1", 180_000, 10_000, 170_000).unwrap(),
+            10_000
+        );
+        assert_eq!(
+            final_mint_fee_zat("FINAL", 180_000, 10_000, 180_000).unwrap(),
+            10_000
+        );
+    }
 }
