@@ -99,6 +99,35 @@ EXIT_STATUS=1
 
 No sale txid, fee estimate, signing, projected-total line, or broadcast exists. No post-sale checker output exists because no sale was mined.
 
+```text
+COMMAND zcash-devtool wallet propose --wallet FUNDING --address KEMI_BUYER_ADDRESS --value 50000 --target-note-count 1
+Fee rule: Zip317
+Amount: 0.00050000 ZEC
+Pool: Ironwood
+Shielded inputs (1)
+Change outputs (1)
+Fee: 0.00010000 ZEC
+
+FEE_PRE_ESTIMATE fee_zat=10000 amount_zat=50000 inputs=1 outputs=2
+FEE_FINAL fee_zat=10000 amount_zat=50000 running_total_before_zat=75000 projected_total_zat=135000 tx_cap_zat=20000 cap_zat=200000 pool=Ironwood
+
+COMMAND zcash-devtool wallet send --wallet FUNDING --identity FUNDING_ID --address KEMI_BUYER_ADDRESS --value 50000 --target-note-count 1 --server na.zec.rocks:443
+Fee rule: Zip317
+Amount: 0.00050000 ZEC
+Pool: Ironwood
+Fee: 0.00010000 ZEC
+Sending transaction...
+MAINNET TRANSACTION txid=f161bc5219ad7a14ef089f544dd058db976abfcf8ab653bd31153cae4bc23c33 height=3531371 bytes=9166
+```
+
+```text
+COMMAND carrier-verifier mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS TOBI_WALLET TOBI_ID KEMI_BUYER_FUNDING_WALLET KEMI_BUYER_IDENTITY 2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 1 KEMI_SALE_VAULT TOBI_PAYMENT 3530540 20000 85000
+NO SALE OUTPUT BEFORE PROCESS TERMINATION
+NO SALE TXID
+```
+
+No post-sale checker output exists because no sale was observed as mined.
+
 ## O2
 
 ```text
