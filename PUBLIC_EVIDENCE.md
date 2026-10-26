@@ -85,6 +85,20 @@ COMMAND carrier-verifier mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS TOBI_WALLET 
 Error: Buyer funding note cannot cover sale price and fee
 ```
 
+Approved sale retry configuration: buyer funding birthday 3531306, with the approved earliest-lower fallback 3530540. Sale price remained 20000 zatoshi. The final-built-transaction fee guard remained 20000 zatoshi per transaction and 200000 zatoshi projected running total.
+
+```text
+COMMAND carrier-verifier mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS TOBI_WALLET TOBI_ID FUNDING_WALLET FUNDING_IDENTITY 2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 1 KEMI_SALE_VAULT TOBI_PAYMENT 3531306 20000 75000
+Error: Buyer funding note cannot cover sale price and fee
+EXIT_STATUS=1
+
+COMMAND carrier-verifier mainnet-sale PRIMARY_HTTPS SECONDARY_HTTPS TOBI_WALLET TOBI_ID FUNDING_WALLET FUNDING_IDENTITY 2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 1 KEMI_SALE_VAULT TOBI_PAYMENT 3530540 20000 75000
+Error: Buyer funding note cannot cover sale price and fee
+EXIT_STATUS=1
+```
+
+No sale txid, fee estimate, signing, projected-total line, or broadcast exists. No post-sale checker output exists because no sale was mined.
+
 ## O2
 
 ```text
