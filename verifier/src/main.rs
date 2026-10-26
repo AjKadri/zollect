@@ -653,6 +653,8 @@ fn verify_issuance(
     let mut sealed = false;
     let mut items = Vec::new();
     let mut vaults = HashSet::new();
+    let mut marker_txids = Vec::new();
+    let mut authenticated_marker_txids = Vec::new();
     for tx in txs {
         let authenticated = tx.nullifiers.iter().any(|nf| owned.contains(nf));
         let markers: Vec<_> = tx
@@ -664,7 +666,11 @@ fn verify_issuance(
                     .map(|m| (*index, n, m))
             })
             .collect();
+        if !markers.is_empty() {
+            marker_txids.push(tx.txid.clone());
+        }
         if authenticated && !markers.is_empty() {
+            authenticated_marker_txids.push(tx.txid.clone());
             ensure!(!sealed, "FAIL mint_after_FINAL txid={}", tx.txid);
             ensure!(markers.len() == 1, "FAIL ambiguous issuance marker");
             if let Some(nf) = &successor {
@@ -733,7 +739,12 @@ fn verify_issuance(
     }
     ensure!(
         sealed && !items.is_empty(),
-        "FAIL supply not sealed with any items"
+        "FAIL supply not sealed with any items sealed={} item_count={} marker_txids={:?} authenticated_marker_txids={:?} tx_count={}",
+        sealed,
+        items.len(),
+        marker_txids,
+        authenticated_marker_txids,
+        txs.len()
     );
     for (number, txid, index, cmx) in &items {
         println!("ITEM {number} VALID txid={txid} action={index} cmx={cmx}");

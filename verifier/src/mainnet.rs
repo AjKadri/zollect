@@ -541,7 +541,7 @@ pub(crate) fn mint(
     if subject == "FINAL" {
         probe
             .add_ironwood_output::<Infallible>(
-                None,
+                Some(issuer_fvk.to_ovk(Scope::External)),
                 burn_address(),
                 Zatoshis::ZERO,
                 successor_memo.clone(),
@@ -608,7 +608,12 @@ pub(crate) fn mint(
         .map_err(|e| anyhow!("Funding input: {e:?}"))?;
     if subject == "FINAL" {
         builder
-            .add_ironwood_output::<Infallible>(None, burn_address(), Zatoshis::ZERO, successor_memo)
+            .add_ironwood_output::<Infallible>(
+                Some(issuer_fvk.to_ovk(Scope::External)),
+                burn_address(),
+                Zatoshis::ZERO,
+                successor_memo,
+            )
             .map_err(|e| anyhow!("FINAL output: {e:?}"))?;
     } else {
         let recipient = address(destination)?;

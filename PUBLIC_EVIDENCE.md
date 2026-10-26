@@ -212,3 +212,23 @@ VERIFY_TIMING mode=verify-any-item tx_count=5 status=FAIL elapsed_ms=8077
 The seal is mined, but the issuance checker did not produce the required three `VALID` lines and `SUPPLY SEALED count=3`. No transfer or sale was attempted.
 
 Approved consistency change: with aligned tips, a single server whose `info_height` is exactly one block from its own tip is retried after 3 seconds, up to 3 retries. Larger or persistent gaps still refuse.
+
+## Issuance checker diagnosis and regression result
+
+```text
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK carrier-m2 1 MINT_TXID_LIST_FILE
+TXID_LIST
+89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16
+e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6
+1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb
+53470e9b48d1cb0d69980de66b0ac8f33cf6dad3f267ca083ad0126ab855a73b
+018fa54fc256cb7b8250c24cdd444b64b5c3b50be82721c7be959bf8810d688b
+Error: FAIL supply not sealed with any items sealed=false item_count=3 marker_txids=["e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6", "1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb", "53470e9b48d1cb0d69980de66b0ac8f33cf6dad3f267ca083ad0126ab855a73b"] authenticated_marker_txids=["e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6", "1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb", "53470e9b48d1cb0d69980de66b0ac8f33cf6dad3f267ca083ad0126ab855a73b"] tx_count=5
+VERIFY_TIMING mode=verify-any-item tx_count=5 status=FAIL elapsed_ms=1229
+```
+
+```text
+COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK COLLECTION
+FINAL txid=c30b0bbbedaa51c5466133da0fcd51a58af58f996596f3f24d2532855805ff74 action=0 height=264
+Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51d10d16aafbe007a302
+```
