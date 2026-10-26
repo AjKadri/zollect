@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bearer | Shielded ownership</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">PRIVATE MARKETS / BEARER</p>
+        <h1>Ownership you can check without a marketplace.</h1>
+        <p class="lede">Verify shielded carrier notes against two public light-wallet servers. The page never holds spending keys and never buys or sells an item.</p>
+        <div class="status" id="status">Loading collection…</div>
+      </header>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">COLLECTION</p>
+            <h2 id="collection-name">—</h2>
+          </div>
+          <p class="muted">Read-only verification</p>
+        </div>
+        <div class="item-grid" id="items"></div>
+      </section>
+
+      <section class="panel challenge-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">CHALLENGE A HOLDER</p>
+            <h2>Ask for a fresh signed proof.</h2>
+          </div>
+          <p class="muted">Rate-limited and kill-switchable</p>
+        </div>
+        <p class="muted">The holder service signs a challenge off-chain. The verifier fetches only the proof’s known transaction chain from both servers.</p>
+        <button class="button" id="challenge-button" disabled>Challenge configured holder</button>
+        <pre class="result" id="challenge-result">No challenge run yet.</pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PUBLIC RUN RECORDS</p>
+            <h2>Chain evidence</h2>
+          </div>
+        </div>
+        <div class="records" id="records"></div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

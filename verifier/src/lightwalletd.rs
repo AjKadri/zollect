@@ -265,18 +265,28 @@ impl MainnetLightwalletd {
                     "FAIL RPC_SERVER_DISAGREEMENT lightwalletd tip hash differs height={}",
                     primary.tip_height
                 );
+                let primary_gap = primary.info_height.abs_diff(primary.tip_height);
+                let secondary_gap = secondary.info_height.abs_diff(secondary.tip_height);
                 ensure!(
-                    primary.info_height == primary.tip_height,
-                    "FAIL LIGHTWALLETD_INCOMPLETE_INFO server=primary info_height={} tip_height={}",
+                    primary_gap <= 1 && secondary_gap <= 1,
+                    "FAIL LIGHTWALLETD_INCOMPLETE_INFO primary_info_height={} primary_tip_height={} secondary_info_height={} secondary_tip_height={}",
                     primary.info_height,
-                    primary.tip_height
-                );
-                ensure!(
-                    secondary.info_height == secondary.tip_height,
-                    "FAIL LIGHTWALLETD_INCOMPLETE_INFO server=secondary info_height={} tip_height={}",
+                    primary.tip_height,
                     secondary.info_height,
                     secondary.tip_height
                 );
+                if primary_gap == 1 || secondary_gap == 1 {
+                    ensure!(
+                        attempt < MAX_SNAPSHOT_RETRIES,
+                        "FAIL LIGHTWALLETD_INCOMPLETE_INFO persistent one-block info gap primary_info_height={} primary_tip_height={} secondary_info_height={} secondary_tip_height={}",
+                        primary.info_height,
+                        primary.tip_height,
+                        secondary.info_height,
+                        secondary.tip_height
+                    );
+                    thread::sleep(SNAPSHOT_RETRY_DELAY);
+                    continue;
+                }
                 return Ok(ServerSnapshot {
                     chain_name: primary.chain_name,
                     height: primary.tip_height,

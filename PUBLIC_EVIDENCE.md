@@ -197,3 +197,18 @@ real 0.45
 HELD collection=carrier-m2 item=1 hop=0 txid=e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6 action=2 cmx=b963e132cf150599a5ad6eefc149e3eab9c7cbeb71398281bf0b33e85dca3a25 nullifier=444703a4b5a992cd473b32773b12bc084abb6b81d72e4b273a9ff9b13b75f90a control_signature=VALID
 VERIFY_TIMING mode=challenge-proof tx_count=2 elapsed_ms=766
 ```
+
+## Mainnet seal and issuance check
+
+```text
+MAINNET TRANSACTION txid=53470e9b48d1cb0d69980de66b0ac8f33cf6dad3f267ca083ad0126ab855a73b height=3531276 bytes=12322
+MAINNET TRANSACTION txid=018fa54fc256cb7b8250c24cdd444b64b5c3b50be82721c7be959bf8810d688b height=3531291 bytes=9166
+
+COMMAND carrier-verifier mainnet-verify-item PRIMARY_HTTPS SECONDARY_HTTPS ISSUER_UFVK carrier-m2 1 MINT_TXID_LIST_FILE
+Error: FAIL supply not sealed with any items
+VERIFY_TIMING mode=verify-any-item tx_count=5 status=FAIL elapsed_ms=8077
+```
+
+The seal is mined, but the issuance checker did not produce the required three `VALID` lines and `SUPPLY SEALED count=3`. No transfer or sale was attempted.
+
+Approved consistency change: with aligned tips, a single server whose `info_height` is exactly one block from its own tip is retried after 3 seconds, up to 3 retries. Larger or persistent gaps still refuse.
