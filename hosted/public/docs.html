@@ -73,11 +73,20 @@
       <h2>Verify it yourself</h2>
       <p>The fastest way is the <a href="index.html#collection">Verify</a> and <a href="index.html#cheat">Try to cheat</a> buttons on the main page; they run the real checker against Zcash mainnet. To run it on your own machine:</p>
 <pre><code># build the read-only checker (Rust)
-git clone REPO_URL zollect && cd zollect
+git clone https://github.com/AjKadri/zollect.git zollect && cd zollect
 cargo build --manifest-path verifier/Cargo.toml --release --locked --features mainnet
 
 # 1. Is Lagos Lights #2 genuine, and is the collection sealed?
 verifier/target/release/zecathon-carrier-verifier mainnet-verify-item \
+  https://na.zec.rocks:443 https://eu.zec.rocks:443 \
+  public/lagos-lights.issuer.ufvk lagos-lights 2 public/lagos-lights.mint-txids</code></pre>
+      <p><strong>Download the checker:</strong> <a href="https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64">Linux x86-64 release binary</a> and <a href="https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256">SHA-256 checksum</a>.</p>
+<pre><code>curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64
+curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256
+sha256sum -c zecathon-carrier-verifier-mainnet-linux-x86_64.sha256
+chmod +x zecathon-carrier-verifier-mainnet-linux-x86_64
+
+./zecathon-carrier-verifier-mainnet-linux-x86_64 mainnet-verify-item \
   https://na.zec.rocks:443 https://eu.zec.rocks:443 \
   public/lagos-lights.issuer.ufvk lagos-lights 2 public/lagos-lights.mint-txids</code></pre>
       <p>Expected output:</p>

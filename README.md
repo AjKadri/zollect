@@ -2,6 +2,7 @@
 
 **Own it on Zcash. Prove it anywhere.**
 Collectibles held as shielded notes: provable by anyone, traceable by no one.
+![Zollect: a zote from the Lagos Lights collection](docs/hero.png)
 
 Live site: https://zollect.ajkadri.dev · Zecathon entry, Private Markets track
 
@@ -42,6 +43,19 @@ From source (Rust, stable toolchain):
 cargo build --manifest-path verifier/Cargo.toml --release --locked --features mainnet
 
 verifier/target/release/zecathon-carrier-verifier mainnet-verify-item \
+  https://na.zec.rocks:443 https://eu.zec.rocks:443 \
+  public/lagos-lights.issuer.ufvk lagos-lights 2 public/lagos-lights.mint-txids
+```
+
+Download the checker: [Linux x86-64 release binary](https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64) and [SHA-256 checksum](https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256).
+
+```sh
+curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64
+curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256
+sha256sum -c zecathon-carrier-verifier-mainnet-linux-x86_64.sha256
+chmod +x zecathon-carrier-verifier-mainnet-linux-x86_64
+
+./zecathon-carrier-verifier-mainnet-linux-x86_64 mainnet-verify-item \
   https://na.zec.rocks:443 https://eu.zec.rocks:443 \
   public/lagos-lights.issuer.ufvk lagos-lights 2 public/lagos-lights.mint-txids
 ```
