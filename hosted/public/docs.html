@@ -87,8 +87,11 @@ ITEM 2 VALID txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cc
 ITEM 3 VALID txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 action=0
 SUPPLY SEALED count=3</code></pre>
 <pre><code># 2. Tobi's pre-sale proof must now fail, and the sale must link the two notes
-zecathon-carrier-verifier mainnet-proof PRIMARY SECONDARY public/proofs/tobi-zote2.json CHALLENGE public/lagos-lights.zote2-chain
-zecathon-carrier-verifier mainnet-link  PRIMARY SECONDARY public/proofs/tobi-zote2.json public/proofs/kemi-zote2.json CHALLENGE public/lagos-lights.zote2-chain</code></pre>
+PRIMARY=https://na.zec.rocks:443
+SECONDARY=https://eu.zec.rocks:443
+CHALLENGE=5e14b19cfda8b3990f0fc4dda18e93e156b6270497e3a9cd31217b89cc2afb74
+verifier/target/release/zecathon-carrier-verifier mainnet-proof "$PRIMARY" "$SECONDARY" public/proofs/tobi-zote2.json "$CHALLENGE" public/lagos-lights.zote2-chain
+verifier/target/release/zecathon-carrier-verifier mainnet-link "$PRIMARY" "$SECONDARY" public/proofs/tobi-zote2.json public/proofs/kemi-zote2.json "$CHALLENGE" public/lagos-lights.zote2-chain</code></pre>
       <p>Expected: <code>SPENT … spending_txid=c08b51ee…</code> and <code>LINK VALID … same_action=1</code>.</p>
       <p>Every check fetches only the listed transactions from two independent light-wallet servers, compares the full responses, and refuses if they disagree. Nothing is signed or broadcast. Each check takes one to five seconds.</p>
     </section>
