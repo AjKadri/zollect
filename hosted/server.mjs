@@ -19,6 +19,7 @@ const killSwitchFile =
 
 const config = {
   verifier: process.env.VERIFIER_BIN ?? "zecathon-carrier-verifier",
+  attestVerifier: process.env.ATTEST_VERIFIER_BIN ?? process.env.VERIFIER_BIN ?? "zecathon-carrier-verifier",
   primary: process.env.PRIMARY_SERVER ?? "https://na.zec.rocks:443",
   secondary: process.env.SECONDARY_SERVER ?? "https://eu.zec.rocks:443",
   issuerUfvk: process.env.ISSUER_UFVK_FILE ?? "",
@@ -121,9 +122,9 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function runVerifierResult(args, timeoutMs = 15_000) {
+function runVerifierResult(args, timeoutMs = 15_000, verifier = config.verifier) {
   return new Promise((resolve, reject) => {
-    const child = spawn(config.verifier, args, {
+    const child = spawn(verifier, args, {
       cwd: directory,
       env: { ...process.env, RUST_BACKTRACE: "0" },
       stdio: ["ignore", "pipe", "pipe"],
@@ -163,8 +164,8 @@ function runVerifierResult(args, timeoutMs = 15_000) {
   });
 }
 
-async function runVerifier(args, timeoutMs = 15_000) {
-  const result = await runVerifierResult(args, timeoutMs);
+async function runVerifier(args, timeoutMs = 15_000, verifier = config.verifier) {
+  const result = await runVerifierResult(args, timeoutMs, verifier);
   if (result.timedOut) throw new Error("Verifier timed out");
   if (result.code !== 0) {
     throw new Error(result.stdout || result.stderr || `Verifier exited with ${result.code}`);
@@ -232,7 +233,7 @@ async function challengeHolder(request) {
       config.collection,
       String(holder.item),
       holder.txidListFile,
-    ]);
+    ], 15_000, config.attestVerifier);
     const result = await runVerifier([
       "mainnet-proof",
       config.primary,
