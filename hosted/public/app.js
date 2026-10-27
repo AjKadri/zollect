@@ -274,10 +274,10 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
           li.textContent = "This attack runs only against the live checker, which isn't reachable from this preview.";
         } else {
           const p = parse(output);
-          const blocked = p.spent || Boolean(p.fail);
-          head.append(blocked ? chip("held", "Blocked") : chip("spent", "Not blocked"));
+          const recognised = p.spent || Boolean(p.fail);
+          head.append(recognised ? chip("held", "Blocked") : chip("spent", "Checker error, try again"));
           if (p.ms !== null) { const t = document.createElement("span"); t.className = "time"; t.textContent = `${(p.ms / 1000).toFixed(1)} s`; head.append(t); }
-          li.textContent = (ATTACK_TEXT[kind](p) || (p.fail ? p.fail.replace(/^FAIL\s*/, "Reason: ") : "Unexpected result: see the output."))
+          li.textContent = (!recognised ? "Checker error, try again" : (ATTACK_TEXT[kind](p) || (p.fail ? p.fail.replace(/^FAIL\s*/, "Reason: ") : "Unexpected result: see the output.")))
             + (recorded ? " (Recorded mainnet result.)" : "");
           const d = document.createElement("details"); const sm = document.createElement("summary"); sm.textContent = "Show the checker's output";
           const pre = document.createElement("pre"); pre.textContent = output; d.append(sm, pre);
