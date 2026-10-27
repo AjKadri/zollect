@@ -11,6 +11,11 @@ plan.md
 verifier/target/
 public/*
 !public/issuer.ufvk
+!public/lagos-lights.issuer.ufvk
+!public/lagos-lights.mint-txids
+!public/lagos-lights.zote2-chain
+!public/proofs/
+!public/proofs/*.json
 # Private research, machine details, and execution transcripts
 EVIDENCE.md
 EVIDENCE-ownership.md

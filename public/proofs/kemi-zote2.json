@@ -1,0 +1,22 @@
+{
+  "action": 1,
+  "chain_txids": [
+    "7f1d30c2875daa7b1e2dacfb97004c86a443c3d75a6b73dff103c9e186d97b36",
+    "abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda",
+    "4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7",
+    "9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060",
+    "d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec",
+    "2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14",
+    "c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0"
+  ],
+  "challenge": "5e14b19cfda8b3990f0fc4dda18e93e156b6270497e3a9cd31217b89cc2afb74",
+  "cmx": "0fea744310c8f3f0389efe73f4a93964dd6b9e1e9ca319a3d7133d54050cb91a",
+  "collection": "lagos-lights",
+  "hop": 2,
+  "item": 2,
+  "nullifier": "b707053ca2bc723e9e5f9c89ec80a9ffd188876151fa7304da7578b7b7e9d024",
+  "signature": "a64fa8d50091684fcfa031808ec03d134c69064dadedc7985c587d6db1e5211fe6e8ff50984aff61e6831a569d45b70f3a5165dc54d02cfede4b1dc97564ed14",
+  "txid": "c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0",
+  "ufvk": "uview15a7hpxe50m4c9d60pvkwkslmvreqa2kdsf6vx4mkccstmr8s3m7fks9xugmp2nszytr9ndcggtdkd9f0qdahfg0defmawzvcyz9fe22shmrhm80hg6rcesd2xge6etwqy23s7vgverc2k9rmjywv3ks6xwyshzyta23wac8t0twprjq6nzmvsh58zypvy80q3dhnl8kwmym0pesv87pwupa9vvs2ptnmd0u3cnmtx9q8h92enygmyjy8avf5vj8eqcnfpyu2z86vh32v0lqlssgupz7jmzqek680fhupxzrnzukggfcvhm7vys2l2u3qksva4xght65e949e9gt6t6jpeuc4fnkttj2rrw92y5pncvsx7vy93zlaq3w30vp5gp28ycgwpfqsl",
+  "vault_recipient": "7e055a14c13a9c145e5e48a83ddc3950ba18db7d1c031e6c61dad919a81e0983ca4d5aea0bce66c9f38630"
+}

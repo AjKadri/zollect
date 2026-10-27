@@ -1,0 +1,21 @@
+{
+  "action": 1,
+  "chain_txids": [
+    "7f1d30c2875daa7b1e2dacfb97004c86a443c3d75a6b73dff103c9e186d97b36",
+    "abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda",
+    "4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7",
+    "9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060",
+    "d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec",
+    "2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14"
+  ],
+  "challenge": "5e14b19cfda8b3990f0fc4dda18e93e156b6270497e3a9cd31217b89cc2afb74",
+  "cmx": "5e73b9369a03f23b7ba7aad0667c890e99fcf20a392292da3b321201f01a941b",
+  "collection": "lagos-lights",
+  "hop": 1,
+  "item": 2,
+  "nullifier": "ffacce3dbeb13bb5c5129b516e2b1a2ddf27b5381d0809e4dc5dab974419fa3b",
+  "signature": "9f1ff82b22e2c44a3152cf00e6ef8f8bf6ee51b16fd285f89f623caffb861b17ba4d0168c6008b6034bb907a0676be8a4a0dfdd7a7067d7b7492b3d22dd64911",
+  "txid": "2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14",
+  "ufvk": "uview153wzpcxhge3jd84mdpds2nt8lmk6v8j8ln900a44xemtqvqzcrttrd9xv97ulxnnanz2qjmvrs0tm807kkv09m5xltehs7nun06r766x2q0eq3q3ez2rhhuzud4nvv73a6pax08hcvgef7cvsajhuceuv59vvaj4fwxtcgmx3pmrqe68x4td0wnleh7urzdc5ydd8ee8sc3uhf08xck0prw2njzwfzhczgv24jxp99jvm2wuf3ktamg67esxqrwrlqng4kdfyafrmvhfa0tpxmh8x7j4wx23t2vj939zh2lstfwev4a7ls2puzp2g55an5y6qhem75n277knnju7fg3wjh895qxupgg8knru9m8zc0n9n4xfq2t7npus7al8nvpw4cc6hw6hx",
+  "vault_recipient": "fd88e431b3f94d815bc02e9cecf168509f89b5b293fe1802aaf6df5f269aa39d178edebcdd9f9be61b5e13"
+}
