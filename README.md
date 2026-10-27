@@ -111,7 +111,7 @@ AI coding assistants (Codex, Claude) were used during development.
 
 Licensed under either of
 
-- Apache License, Version 2.0 (LICENSE-APACHE)
-- MIT license (LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT license](LICENSE-MIT)
 
 at your option.
