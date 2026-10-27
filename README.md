@@ -84,4 +84,4 @@ AI coding assistants (Codex, Claude) were used during development under the auth
 
 ## Licence
 
-See [LICENSE](LICENSE).
+Licensed under either of Apache-2.0 or MIT, at your option.
