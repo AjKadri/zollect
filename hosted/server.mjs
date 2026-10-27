@@ -301,6 +301,8 @@ async function serveStatic(request, response, pathname) {
       ? "text/html; charset=utf-8"
       : file.endsWith(".js")
         ? "text/javascript; charset=utf-8"
+        : file.endsWith(".svg")
+        ? "image/svg+xml"
         : "text/css; charset=utf-8";
     response.writeHead(200, { "content-type": contentType, "cache-control": "no-store" });
     response.end(data);
