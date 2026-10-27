@@ -94,8 +94,24 @@ Chain watchers learn nothing beyond the existence of shielded transactions. A ve
 
 ## Credits
 
-The carrier-note idea comes from [Zarrier](https://github.com/Reiunmute/zcash-carrier), a testnet proof of concept. Zollect is a new implementation for Ironwood mainnet, written during Zecathon. Built on the Zcash Rust crates. See [CREDITS.md](CREDITS.md).
+Zollect builds on the carrier-note design from [Zarrier](https://github.com/Reiunmute/zcash-carrier), a testnet proof of concept. Zollect is a new implementation written during Zecathon that adds:
+
+- running on Zcash mainnet’s Ironwood pool, with a live collection and sale;
+- one-zote vaults and fees paid from separate wallets, so proofs don’t expose holders’ funds;
+- challenge-based ownership proofs;
+- checks against two independent servers;
+- a public checker website;
+- a draft Zote standard for wallets.
+
+Built on the Zcash Rust crates. See CREDITS.md.
+
+AI coding assistants (Codex, Claude) were used during development.
 
 ## Licence
 
-Licensed under either of [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
+Licensed under either of
+
+- Apache License, Version 2.0 (LICENSE-APACHE)
+- MIT license (LICENSE-MIT)
+
+at your option.
