@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zote standard (draft)</title>
+<meta name="description" content="A draft standard for collectibles held as shielded notes on Zcash.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="doc-top">
+  <nav class="nav" aria-label="Main">
+    <a class="brand" href="index.html"><span class="brand-dot" aria-hidden="true"></span>Zollect</a>
+    <ul class="nav-links">
+      <li><a href="docs.html">Docs</a></li>
+      <li><a href="standard.html" aria-current="page">Zote standard</a></li>
+      <li><a href="evidence.html">Evidence</a></li>
+      <li><a class="nav-cta" href="index.html#challenge">Challenge Kemi</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="doc-hero">
+  <h1>Zote standard</h1>
+  <p>Draft 0.1, October 2026. A proposal for how any Zcash wallet or marketplace can recognise, protect, transfer and verify zotes, using the Ironwood pool as it is today.</p>
+</div>
+<div class="doc">
+  <nav class="toc" aria-label="On this page"><ol>
+    <li><a href="#abstract">Abstract</a></li><li><a href="#motivation">Motivation</a></li><li><a href="#terms">Terms</a></li>
+    <li><a href="#memo">Memo format</a></li><li><a href="#issue">Issuance</a></li><li><a href="#transfer">Transfer</a></li>
+    <li><a href="#proof">Ownership proof</a></li><li><a href="#wallets">Wallet requirements</a></li>
+    <li><a href="#privacy">Privacy</a></li><li><a href="#security">Security</a></li><li><a href="#ref">Reference implementation</a></li></ol></nav>
+  <article>
+    <section id="abstract"><h2>Abstract</h2>
+      <p>A zote is a non-fungible collectible represented by a single zero-value note in the Ironwood shielded pool. Ownership is control of the note's spending key. Each transfer creates exactly one successor note through Ironwood's action binding, so a zote can't be duplicated or sold twice. This document defines the memo format, issuance and transfer rules, an ownership proof, and what wallets must do to hold zotes safely.</p></section>
+    <section id="motivation"><h2>Motivation</h2>
+      <p>Zcash Shielded Assets are not active on mainnet, so Zcash collectibles today are records in marketplace databases. Zotes need no consensus change: they use notes, memos and the existing action structure. A shared standard lets any wallet display zotes and any marketplace trade them, instead of each project inventing its own.</p></section>
+    <section id="terms"><h2>Terms</h2>
+      <ul>
+        <li><strong>Zote:</strong> a zero-value Ironwood note carrying a zote memo, valid under the rules below.</li>
+        <li><strong>Vault:</strong> an address that holds exactly one zote and no other notes.</li>
+        <li><strong>Hop:</strong> the number of transfers since mint. Mint is hop 0.</li>
+        <li><strong>Issuer chain:</strong> the sequence of issuer transactions that mints a collection and ends with a seal.</li>
+      </ul>
+      <p>The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.</p></section>
+    <section id="memo"><h2>Memo format</h2>
+<pre><code>ZEC-O1|&lt;collection-id&gt;|&lt;item&gt;|&lt;hop&gt;        zote note
+ZEC-O1|&lt;collection-id&gt;|FINAL|0             seal note</code></pre>
+      <p>Fields are UTF-8, separated by <code>|</code>. The memo is encrypted like any other memo; only the holder, and anyone they share the vault viewing key with, can read it. Future versions MAY append fields after the hop.</p></section>
+    <section id="issue"><h2>Issuance</h2>
+      <ul>
+        <li>Each mint MUST spend a note from the issuer's previous issuer-chain transaction, so the chain is connected.</li>
+        <li>Each zote MUST have value 0 and be sent to a fresh vault address.</li>
+        <li>The issuer MUST end the collection with a seal note sent to a provably unspendable address, with the memo encrypted to the issuer's outgoing viewing key so verifiers can read it.</li>
+        <li>The issuer SHOULD publish its full viewing key so anyone can count the collection.</li>
+        <li>Any zote memo in an issuer transaction after the seal is invalid.</li>
+      </ul></section>
+    <section id="transfer"><h2>Transfer</h2>
+      <ul>
+        <li>A transfer MUST spend the current zote note and create its successor in the same Ironwood action, with value 0 and the hop increased by exactly 1.</li>
+        <li>The successor MUST go to a fresh vault address.</li>
+        <li>Fees MUST be paid from other inputs in the same transaction, never from a vault.</li>
+        <li>A sale SHOULD be a single jointly built transaction (PCZT) containing both the zote transfer and the payment, with the seller signing last after checking the payment.</li>
+      </ul></section>
+    <section id="proof"><h2>Ownership proof</h2>
+      <p>The verifier issues a fresh random challenge. The holder returns the zote's transaction id, action index, note commitment, nullifier, the vault viewing key and a signature over:</p>
+<pre><code>zecathon-carrier-control-v1|&lt;challenge&gt;|&lt;txid&gt;|&lt;action&gt;|&lt;cmx&gt;|&lt;nullifier&gt;</code></pre>
+      <p>made with the vault's spend-authorising key. The verifier MUST check that the signature is valid for that key, the note decrypts to a valid zote memo, the nullifier is not yet in the nullifier set (otherwise the result is SPENT), and every hop links back through same-action bindings to a sealed issuer chain. Results: VALID, HELD, SPENT or FAIL. The prefix is kept from the reference implementation and will be renamed <code>zote-control-v1</code> in a later draft.</p></section>
+    <section id="wallets"><h2>Wallet requirements</h2>
+      <ul>
+        <li>Wallets MUST NOT select zote notes as inputs for ordinary payments. Doing so destroys the zote.</li>
+        <li>Wallets SHOULD show zotes as collectibles: collection, item, hop.</li>
+        <li>Wallets SHOULD keep each zote in its own vault and offer "send zote" and "prove ownership" actions following the rules above.</li>
+        <li>Wallets MAY show the collection's verification status using two independent servers.</li>
+      </ul></section>
+    <section id="privacy"><h2>Privacy considerations</h2>
+      <p>Chain observers learn nothing beyond the existence of shielded transactions. A proof reveals the vault's history, which is why a vault MUST hold one zote only. A buyer learns the zote's hop count and dates. The issuer's viewing key exposes mint-time vault addresses. Light-wallet servers see request metadata; clients SHOULD use Tor.</p></section>
+    <section id="security"><h2>Security considerations</h2>
+      <p>The network enforces uniqueness (a note can be spent once). The seal is enforced by verifiers, not consensus. Verifiers MUST reject unverifiable history rather than assume validity, and SHOULD require agreement between two independent servers. Unspendable seal addresses are derived from public hash bytes with no known key.</p></section>
+    <section id="ref"><h2>Reference implementation</h2>
+      <p>Zollect's checker and sender tools, with the Lagos Lights collection live on mainnet. See the <a href="docs.html">docs</a> and the <a href="evidence.html">evidence</a>. Design credit for carrier notes: Zarrier.</p></section>
+  </article>
+</div>
+<footer class="foot">
+  <div class="foot-inner">
+    <p class="brand"><span class="brand-dot" aria-hidden="true"></span>Zollect</p>
+    <p class="credit">Built for Zecathon, submitted on Zcash's tenth birthday.</p>
+  </div>
+</footer>
+</body>
+</html>

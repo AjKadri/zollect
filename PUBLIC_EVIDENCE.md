@@ -22,6 +22,66 @@ COMMAND carrier-verifier issuance RPC_URL ISSUER_UFVK carrier-20261024
 Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51d10d16aafbe007a302
 ```
 
+## Hosted verification
+
+```text
+COMMAND GET /api/collection
+collection=lagos-lights challengeItem=2 links.repo=https://example.invalid/zecathon-repo links.evidence=https://example.invalid/zecathon-evidence links.video=https://example.invalid/zecathon-video
+records=bootstrap,3_mints,FINAL,transfer,sale
+
+COMMAND POST /api/verify-item {"item":2}
+FINAL txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec action=0 height=3531330
+ITEM 1 VALID txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda action=2
+ITEM 2 VALID txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 action=2
+ITEM 3 VALID txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 action=0
+SUPPLY SEALED count=3
+VERIFY_TIMING mode=verify-any-item tx_count=7 elapsed_ms=1559
+CURL_ELAPSED_SECONDS=1.60
+
+COMMAND POST /api/challenge {"item":2}
+HELD collection=lagos-lights item=2 hop=2 txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0 action=1 cmx=0fea744310c8f3f0389efe73f4a93964dd6b9e1e9ca319a3d7133d54050cb91a nullifier=b707053ca2bc723e9e5f9c89ec80a9ffd188876151fa7304da7578b7b7e9d024 control_signature=VALID
+VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=1534
+CURL_ELAPSED_SECONDS=3.05
+
+COMMAND POST /api/attack {"kind":"old-proof"}
+SPENT collection=lagos-lights item=2 hop=1 txid=2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14 action=1 nullifier=ffacce3dbeb13bb5c5129b516e2b1a2ddf27b5381d0809e4dc5dab974419fa3b spending_txid=c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0
+VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=1626
+HTTP_STATUS=200
+CURL_ELAPSED_SECONDS=1.65
+
+COMMAND POST /api/attack {"kind":"forged-signature"}
+Error: FAIL invalid control signature
+HTTP_STATUS=200
+CURL_ELAPSED_SECONDS=1.54
+
+COMMAND POST /api/attack {"kind":"wrong-key"}
+Error: FAIL key does not decrypt note
+HTTP_STATUS=200
+CURL_ELAPSED_SECONDS=1.54
+```
+
+```text
+COMMAND signed-out private window: Verify #2
+Genuine; Collection sealed; 1.7 s; two servers agreed
+
+COMMAND signed-out private window: Send Kemi a challenge
+Kemi answered; Held by the person who answered; 1.6 s
+
+COMMAND signed-out private window: Try Tobi's old proof
+Blocked; Rejected: that zote was spent in the sale. Tobi's proof no longer works.; 1.7 s
+
+COMMAND signed-out private window: Try a forged signature
+Blocked; Rejected: the signature doesn't match the zote's key.
+
+COMMAND signed-out private window: Try a stranger's key
+Blocked; Rejected: that key never owned zote #2.
+```
+
+```text
+COMMAND Tor routing feasibility
+NOT ATTEMPTED: no Tor, Arti, or torsocks transport was available, and the checker keeps direct two-server HTTPS.
+```
+
 ## Mainnet sale approval after memo-policy change
 
 ```text

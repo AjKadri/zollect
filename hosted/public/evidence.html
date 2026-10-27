@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zollect evidence</title>
+<meta name="description" content="Every Zollect mainnet transaction and checker result, with explorer links.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="doc-top">
+  <nav class="nav" aria-label="Main">
+    <a class="brand" href="index.html"><span class="brand-dot" aria-hidden="true"></span>Zollect</a>
+    <ul class="nav-links">
+      <li><a href="docs.html">Docs</a></li>
+      <li><a href="standard.html">Zote standard</a></li>
+      <li><a href="evidence.html" aria-current="page">Evidence</a></li>
+      <li><a class="nav-cta" href="index.html#challenge">Challenge Kemi</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="doc-hero">
+  <h1>Mainnet evidence</h1>
+  <p>Every transaction behind Lagos Lights, with the checker's result for each. Click any transaction to open it on a public explorer: you'll see a shielded transaction and nothing else.</p>
+</div>
+<div class="doc">
+  <nav class="toc" aria-label="On this page"><ol>
+    <li><a href="#lagos">Lagos Lights</a></li><li><a href="#checks">Checker results</a></li>
+    <li><a href="#attacks">Attack tests</a></li><li><a href="#superseded">Superseded collection</a></li><li><a href="#cost">Cost</a></li></ol></nav>
+  <article>
+    <section id="lagos"><h2>Lagos Lights on mainnet</h2><div class="table-wrap"><table class="evtable"><thead><tr><th>Step</th><th>Transaction</th><th>Checker result</th></tr></thead><tbody><tr><td>Mint: Lagos Lights #1</td><td><a href="https://mainnet.zcashexplorer.app/transactions/abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda" target="_blank" rel="noopener">abfb41a2…0cfbda</a></td><td>ITEM 1 VALID</td></tr><tr><td>Mint: Lagos Lights #2</td><td><a href="https://mainnet.zcashexplorer.app/transactions/4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7" target="_blank" rel="noopener">4971340f…a4cca7</a></td><td>ITEM 2 VALID</td></tr><tr><td>Mint: Lagos Lights #3</td><td><a href="https://mainnet.zcashexplorer.app/transactions/9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060" target="_blank" rel="noopener">9ec4773a…9fa060</a></td><td>ITEM 3 VALID</td></tr><tr><td>Seal (block 3,531,330)</td><td><a href="https://mainnet.zcashexplorer.app/transactions/d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec" target="_blank" rel="noopener">d44ab08a…bd61ec</a></td><td>SUPPLY SEALED count=3</td></tr><tr><td>Zote #2 to Tobi (block 3,531,336)</td><td><a href="https://mainnet.zcashexplorer.app/transactions/2a4f5bae61ad39f8f3bfa674c9fc1377eb8a3668451f96f2ca00c1e1355f0a14" target="_blank" rel="noopener">2a4f5bae…5f0a14</a></td><td>HELD by Tobi, then SPENT after the sale</td></tr><tr><td>Funding Kemi's buyer wallet (block 3,531,371)</td><td><a href="https://mainnet.zcashexplorer.app/transactions/f161bc5219ad7a14ef089f544dd058db976abfcf8ab653bd31153cae4bc23c33" target="_blank" rel="noopener">f161bc52…c23c33</a></td><td>Ordinary shielded payment</td></tr><tr><td>Sale: Tobi to Kemi (block 3,531,732)</td><td><a href="https://mainnet.zcashexplorer.app/transactions/c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0" target="_blank" rel="noopener">c08b51ee…4cdda0</a></td><td>HELD by Kemi; LINK VALID, same action</td></tr></tbody></table></div></section>
+    <section id="checks"><h2>Checker results</h2>
+      <p>Each result was produced by the read-only checker, asking two independent light-wallet servers (na.zec.rocks and eu.zec.rocks) and refusing if they disagreed.</p>
+<pre><code>FINAL txid=d44ab08a…fbd61ec height=3531330
+ITEM 1 VALID   ITEM 2 VALID   ITEM 3 VALID
+SUPPLY SEALED count=3                                    1.3 s
+
+SPENT collection=lagos-lights item=2 hop=1 (Tobi)          1.4 s
+      spending_txid=c08b51ee…cdda0
+HELD  collection=lagos-lights item=2 hop=2 (Kemi)          4.9 s
+      control_signature=VALID
+LINK VALID collection=lagos-lights item=2 same_action=1    1.5 s</code></pre>
+    </section>
+    <section id="attacks"><h2>Attack tests</h2>
+      <p>Run on a private test chain (regtest) with the same code, because they need deliberately dishonest transactions. All were rejected.</p>
+      <ul>
+        <li><strong>Selling the same zote twice:</strong> a new transaction spending an already-spent zote was rejected by the node: <code>ironwood double-spend: duplicate nullifier</code>.</li>
+        <li><strong>Fake successor:</strong> a forged note with the right hop number but not created in the spending action: <code>FAIL successor is not in the spent carrier's Action</code>.</li>
+        <li><strong>Minting after the seal:</strong> <code>FAIL mint_after_FINAL</code>.</li>
+        <li><strong>A lagging or dishonest server:</strong> <code>FAIL RPC_SERVER_DISAGREEMENT</code>, no result returned.</li>
+        <li><strong>Wrong payment in a sale:</strong> the seller's tool refused to sign when the amount or recipient was changed.</li>
+      </ul>
+      <p>On mainnet, the <a href="index.html#cheat">Try to cheat</a> buttons test old, forged and wrong-key proofs live.</p>
+    </section>
+    <section id="superseded"><h2>Superseded collection</h2>
+      <p>The first mainnet collection's seal note was encrypted so that even the issuer's viewing key couldn't read it, so it can never verify as sealed. The bug was fixed and Lagos Lights replaced it. It stays here for completeness.</p>
+      <div class="table-wrap"><table class="evtable"><thead><tr><th>Step</th><th>Transaction</th><th>Checker result</th></tr></thead><tbody><tr><td>Bootstrap</td><td><a href="https://mainnet.zcashexplorer.app/transactions/89dfe6217eefd93a59d39e6b4f19ecb1fbba31f8b89a080652f57f50c38eef16" target="_blank" rel="noopener">89dfe621…8eef16</a></td><td>Mined</td></tr><tr><td>Mint #1</td><td><a href="https://mainnet.zcashexplorer.app/transactions/e5eca593949babaf8ca695010f888de9b20dbf2db41c3d18a4dc8af560940de6" target="_blank" rel="noopener">e5eca593…940de6</a></td><td>Mined</td></tr><tr><td>Mint #2</td><td><a href="https://mainnet.zcashexplorer.app/transactions/1d72c7f8db51d489f2431319a04725f627090ae5690eae6ebb7a1b4613d571eb" target="_blank" rel="noopener">1d72c7f8…d571eb</a></td><td>Mined</td></tr><tr><td>Mint #3</td><td><a href="https://mainnet.zcashexplorer.app/transactions/53470e9b48d1cb0d69980de66b0ac8f33cf6dad3f267ca083ad0126ab855a73b" target="_blank" rel="noopener">53470e9b…55a73b</a></td><td>Mined</td></tr><tr><td>Seal (unreadable, bug)</td><td><a href="https://mainnet.zcashexplorer.app/transactions/018fa54fc256cb7b8250c24cdd444b64b5c3b50be82721c7be959bf8810d688b" target="_blank" rel="noopener">018fa54f…0d688b</a></td><td>FAIL supply not sealed</td></tr></tbody></table></div>
+    </section>
+    <section id="cost"><h2>Cost</h2>
+      <p>Everything above, including the superseded collection, cost about 0.0017 ZEC in network fees. Zotes themselves carry zero value; the sale moved 0.0002 ZEC from Kemi to Tobi.</p>
+    </section>
+  </article>
+</div>
+<footer class="foot">
+  <div class="foot-inner">
+    <p class="brand"><span class="brand-dot" aria-hidden="true"></span>Zollect</p>
+    <p class="credit">Built for Zecathon, submitted on Zcash's tenth birthday.</p>
+  </div>
+</footer>
+</body>
+</html>

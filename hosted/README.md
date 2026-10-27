@@ -1,14 +1,15 @@
 # Bearer hosted page
 
-This is the M3 deployment candidate. It is intentionally separate from the Rust verifier and is not deployed yet.
+This is the M3 hosted page. It is intentionally separate from the Rust verifier. The live deployment is at `https://zollect.ajkadri.dev`.
 
 The server exposes only fixed operations:
 
 - `GET /api/collection` returns the configured collection and public run records.
 - `POST /api/verify-item` accepts an allowlisted item number and runs `mainnet-verify-item` with its fixed txid-list file.
 - `POST /api/challenge` accepts the configured holder item only, creates a fresh challenge, runs the off-chain `mainnet-attest` helper, then runs `mainnet-proof` using the proof's self-contained `chain_txids` list.
+- `POST /api/attack` accepts only `old-proof`, `forged-signature`, and `wrong-key`. It runs fixed server-side proof fixtures through `mainnet-proof` and returns the verifier output. The fixtures contain viewing material and proofs only, never spending keys.
 
-Every operation has a per-IP minute rate limit, a persisted UTC daily cap, and a file kill switch. Browser requests never carry wallet paths, identities, UFVKs, or spending keys. The server must run with a service account that can read the configured files, and those files must stay outside the repository.
+Every operation has a per-IP minute rate limit, a persisted UTC daily cap, and a file kill switch. Attack fixtures use the same guards. Browser requests never carry wallet paths, identities, UFVKs, or spending keys. The server must run with a service account that can read the configured files, and those files must stay outside the repository.
 
 Run locally only after filling the environment from `.env.example`:
 
@@ -16,4 +17,4 @@ Run locally only after filling the environment from `.env.example`:
 node hosted/server.mjs
 ```
 
-Deployment remains blocked until the mainnet mint is sealed and `mainnet-verify-item` returns `VALID` for all three items plus `SUPPLY SEALED count=3`. No deployment or public page claim is made by this folder alone.
+The deployed configuration points at the sealed `lagos-lights` mainnet collection and keeps all wallet paths, identities, and proof fixtures outside this repository.

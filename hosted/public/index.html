@@ -1,54 +1,245 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bearer | Shielded ownership</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <main>
-      <header class="hero">
-        <p class="eyebrow">PRIVATE MARKETS / BEARER</p>
-        <h1>Ownership you can check without a marketplace.</h1>
-        <p class="lede">Verify shielded carrier notes against two public light-wallet servers. The page never holds spending keys and never buys or sells an item.</p>
-        <div class="status" id="status">Loading collection…</div>
-      </header>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zollect: own it on Zcash, prove it anywhere</title>
+<meta name="description" content="Collectibles held as shielded notes on Zcash: provable by anyone, traceable by no one.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
 
-      <section class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">COLLECTION</p>
-            <h2 id="collection-name">—</h2>
-          </div>
-          <p class="muted">Read-only verification</p>
-        </div>
-        <div class="item-grid" id="items"></div>
-      </section>
+<div class="sky" aria-hidden="true"></div>
 
-      <section class="panel challenge-panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">CHALLENGE A HOLDER</p>
-            <h2>Ask for a fresh signed proof.</h2>
-          </div>
-          <p class="muted">Rate-limited and kill-switchable</p>
-        </div>
-        <p class="muted">The holder service signs a challenge off-chain. The verifier fetches only the proof’s known transaction chain from both servers.</p>
-        <button class="button" id="challenge-button" disabled>Challenge configured holder</button>
-        <pre class="result" id="challenge-result">No challenge run yet.</pre>
-      </section>
+<header class="hero-wrap">
+  <section class="hero" aria-labelledby="hero-title">
+    <nav class="nav" aria-label="Main">
+      <a class="brand" href="#top"><span class="brand-dot" aria-hidden="true"></span>Zollect</a>
+      <ul class="nav-links">
+        <li><a href="#zote">What's a zote</a></li>
+        <li><a href="#collection">Verify</a></li>
+        <li><a href="#sale">The sale</a></li>
+        <li><a href="#cheat">Try to cheat</a></li>
+        <li><a href="docs.html">Docs</a></li>
+        <li><a class="nav-cta" href="#challenge">Challenge Kemi</a></li>
+      </ul>
+    </nav>
 
-      <section class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">PUBLIC RUN RECORDS</p>
-            <h2>Chain evidence</h2>
+    <div class="hero-copy" id="top">
+      <h1 id="hero-title">Own it on Zcash.<br>Prove it anywhere.</h1>
+      <p class="sub">Collectibles held as shielded notes: provable by anyone, traceable by no one.</p>
+      <div class="hero-actions">
+        <a class="btn btn-mint" href="#collection">Verify a zote</a>
+        <a class="btn btn-ghost" href="#sale">See the sale</a>
+      </div>
+    </div>
+
+    <div class="ribs" aria-hidden="true"></div>
+    <div class="stage" id="stage" aria-hidden="true">
+      <div class="stack" id="stack">
+        <div class="note note-back2"></div>
+        <div class="note note-back1"></div>
+        <div class="note note-front">
+          <div class="note-art" id="note-art"></div>
+          <div class="note-ribs"></div>
+          <div class="note-row">
+            <span class="note-kicker">Lagos Lights collection</span>
+            <span class="seal">Z</span>
+          </div>
+          <div class="note-title">Lagos Lights #2</div>
+          <div class="note-row note-bottom">
+            <span class="serial">0FEA 7443 10C8 F3F0</span>
+            <span class="note-holder"><span class="avatar avatar-xs" data-avatar="kemi"></span>Held by Kemi</span>
           </div>
         </div>
-        <div class="records" id="records"></div>
-      </section>
-    </main>
-    <script type="module" src="/app.js"></script>
-  </body>
+      </div>
+    </div>
+
+    <p class="hero-foot">Live on Zcash mainnet</p>
+  </section>
+</header>
+
+<main>
+
+  <section class="zote" id="zote" aria-labelledby="zote-title">
+    <div class="definition">
+      <h2 id="zote-title"><span class="word">zote</span> <span class="pron">/zōt/</span></h2>
+      <p class="def-noun">noun</p>
+      <p class="def-text">A collectible that lives on Zcash as a shielded note, in a vault only your key controls. You prove you own it by answering a challenge, not by pointing at someone's records.</p>
+    </div>
+    <div class="facts">
+      <article>
+        <h3>It's under your key</h3>
+        <p>Most Zcash collectibles today are entries a marketplace keeps. A zote is a note on the chain that only your key can spend. No company holds the list.</p>
+      </article>
+      <article>
+        <h3>Anyone you show it to can check it</h3>
+        <p>Hand someone a proof and they can confirm your zote is genuine, traces back to the sealed collection, and is still yours. Fakes and old owners fail.</p>
+      </article>
+      <article>
+        <h3>Nobody can watch it</h3>
+        <p>On the chain, a sale looks like any other shielded transaction. Who owns what, who bought and who sold stay private.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="collection" id="collection" aria-labelledby="collection-title">
+    <div class="section-head">
+      <h2 id="collection-title">Lagos Lights</h2>
+      <p>Three zotes, minted and sealed on mainnet. Run the real check: it asks two independent Zcash servers and refuses if they disagree.</p>
+    </div>
+    <div class="zote-grid" id="items"></div>
+    <p class="mode-note" id="mode-note" hidden></p>
+  </section>
+
+  <section class="sale" id="sale" aria-labelledby="sale-title">
+    <div class="section-head">
+      <h2 id="sale-title">Tobi sells Lagos Lights #2 to Kemi</h2>
+      <p>One shielded transaction moved the zote to Kemi and the ZEC to Tobi. Neither could cheat the other. Every step below is a real mainnet transaction.</p>
+    </div>
+
+    <div class="cast">
+      <figure class="person">
+        <span class="avatar avatar-lg" data-avatar="tobi"></span>
+        <figcaption><strong>Tobi</strong><span>the seller</span></figcaption>
+      </figure>
+      <div class="swap" aria-hidden="true">
+        <span class="swap-line"></span>
+        <span class="swap-tag">0.0002 ZEC</span>
+        <span class="swap-tag swap-tag-zote">zote #2</span>
+      </div>
+      <figure class="person">
+        <span class="avatar avatar-lg" data-avatar="kemi"></span>
+        <figcaption><strong>Kemi</strong><span>the buyer</span></figcaption>
+      </figure>
+    </div>
+
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+
+  <section class="chainview" id="chain" aria-labelledby="chain-title">
+    <div class="section-head">
+      <h2 id="chain-title">Same transaction, two views</h2>
+      <p>The sale to Kemi is public on Zcash, yet it gives nothing away. What it proves depends on whether Kemi chooses to show you.</p>
+    </div>
+    <div class="views">
+      <article class="view view-public">
+        <h3>What anyone watching sees</h3>
+        <dl>
+          <div><dt>Transaction</dt><dd class="mono">c08b51ee…cdda0</dd></div>
+          <div><dt>Block</dt><dd>3,531,732</dd></div>
+          <div><dt>Pool</dt><dd>Shielded</dd></div>
+          <div><dt>Sender</dt><dd class="redact">hidden</dd></div>
+          <div><dt>Recipients</dt><dd class="redact">hidden</dd></div>
+          <div><dt>Amounts</dt><dd class="redact">hidden</dd></div>
+          <div><dt>What moved</dt><dd class="redact">hidden</dd></div>
+        </dl>
+        <a class="view-link" href="https://mainnet.zcashexplorer.app/transactions/c08b51eeffce637bb62d7ab309956bff21c98e99715031526d7edf2a494cdda0" target="_blank" rel="noopener">Open it on the explorer</a>
+      </article>
+      <article class="view view-proof">
+        <h3>What Kemi can prove to you</h3>
+        <dl>
+          <div><dt>Zote</dt><dd>Lagos Lights #2</dd></div>
+          <div><dt>Genuine</dt><dd><span class="chip chip-valid">Traces to the sealed mint</span></dd></div>
+          <div><dt>Owner now</dt><dd><span class="chip chip-held">Held by whoever answers</span></dd></div>
+          <div><dt>Previous owner</dt><dd><span class="chip chip-spent">Proof no longer works</span></dd></div>
+          <div><dt>Her wallet</dt><dd class="redact">still hidden</dd></div>
+          <div><dt>Her other zotes</dt><dd class="redact">still hidden</dd></div>
+        </dl>
+        <a class="view-link" href="#challenge">Try it: challenge Kemi</a>
+      </article>
+    </div>
+  </section>
+
+  <section class="challenge" id="challenge" aria-labelledby="challenge-title">
+    <div class="challenge-card">
+      <div class="challenge-copy">
+        <span class="avatar avatar-lg" data-avatar="kemi"></span>
+        <h2 id="challenge-title">Ask Kemi to prove it</h2>
+        <p>You get a fresh code. Kemi's vault answers it with a signature only the owner of zote #2 can make. Nobody learns her address or anything else she holds.</p>
+        <button class="btn btn-mint" id="challenge-button" type="button">Send Kemi a challenge</button>
+      </div>
+      <div class="challenge-result" id="challenge-result" aria-live="polite">
+        <p class="placeholder">Your challenge code and Kemi's answer will appear here.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cheat" id="cheat" aria-labelledby="cheat-title">
+    <div class="section-head">
+      <h2 id="cheat-title">Try to cheat</h2>
+      <p>Each button sends a dishonest claim to the real checker, running against Zcash mainnet. None of them should get through.</p>
+    </div>
+    <div class="attacks">
+      <article class="attack" data-kind="old-proof">
+        <h3>Tobi says he still owns #2</h3>
+        <p>He presents the proof that worked before he sold it.</p>
+        <button class="btn btn-line" type="button">Try Tobi's old proof</button>
+        <div class="verdict" hidden aria-live="polite"></div>
+      </article>
+      <article class="attack" data-kind="forged-signature">
+        <h3>Someone forges Kemi's answer</h3>
+        <p>Her real proof, with one byte of the signature changed.</p>
+        <button class="btn btn-line" type="button">Try a forged signature</button>
+        <div class="verdict" hidden aria-live="polite"></div>
+      </article>
+      <article class="attack" data-kind="wrong-key">
+        <h3>A stranger claims #2</h3>
+        <p>A proof for zote #2, signed with a key that never owned it.</p>
+        <button class="btn btn-line" type="button">Try a stranger's key</button>
+        <div class="verdict" hidden aria-live="polite"></div>
+      </article>
+    </div>
+    <p class="mode-note">Also tested and rejected, on a test chain: selling the same zote twice, minting a fourth zote after the seal, and a fake successor note. <a href="evidence.html">See the recorded results</a>.</p>
+  </section>
+
+  <section class="privacy" id="privacy" aria-labelledby="privacy-title">
+    <div class="section-head">
+      <h2 id="privacy-title">What stays private, and what's real</h2>
+      <p>Privacy is the point, so here is exactly who learns what.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Who</th><th scope="col">Learns</th><th scope="col">Never learns</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Anyone watching the chain</th><td>That shielded transactions happened</td><td>Who holds a zote, who bought, who sold, the price</td></tr>
+          <tr><th scope="row">A verifier</th><td>That a zote is genuine and still held</td><td>The holder's wallet, balance or other zotes</td></tr>
+          <tr><th scope="row">The seller</th><td>The buyer's one-time vault for this zote</td><td>The buyer's funding wallet and history</td></tr>
+          <tr><th scope="row">The buyer</th><td>This zote's hop count and dates</td><td>Earlier owners' identities or wallets</td></tr>
+          <tr><th scope="row">The light-wallet servers</th><td>Request timing and IP address</td><td>Keys, owners, amounts</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="honesty">
+      <li><strong>Live on mainnet:</strong> the sealed collection, the transfer to Tobi, the sale to Kemi, and the checks on this page.</li>
+      <li><strong>Recorded on a test chain:</strong> the attack tests (double spend, forged zote, minting after the seal), all rejected.</li>
+      <li><strong>Seeded by us:</strong> the collection and its owners. This is a working demo, not user traction.</li>
+      <li><strong>Superseded:</strong> an earlier collection whose seal had a bug, fixed and replaced by Lagos Lights.</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <p class="brand"><span class="brand-dot" aria-hidden="true"></span>Zollect</p>
+    <ul>
+      <li><a href="docs.html">Docs</a></li>
+      <li><a href="standard.html">Zote standard (draft)</a></li>
+      <li><a href="evidence.html">Mainnet evidence</a></li>
+      <li><a href="#" id="repo-link">Source code</a></li>
+      <li><a href="#" id="video-link">Demo video</a></li>
+    </ul>
+    <p class="credit">Carrier-note design credit: Zarrier. Built for Zecathon, submitted on Zcash's tenth birthday.</p>
+  </div>
+</footer>
+
+<script src="art.js"></script>
+<script src="app.js"></script>
+</body>
 </html>

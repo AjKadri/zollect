@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zollect docs</title>
+<meta name="description" content="How zotes work, how to verify them yourself, and what Zollect does and doesn't do.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="doc-top">
+  <nav class="nav" aria-label="Main">
+    <a class="brand" href="index.html"><span class="brand-dot" aria-hidden="true"></span>Zollect</a>
+    <ul class="nav-links">
+      <li><a href="docs.html" aria-current="page">Docs</a></li>
+      <li><a href="standard.html">Zote standard</a></li>
+      <li><a href="evidence.html">Evidence</a></li>
+      <li><a class="nav-cta" href="index.html#challenge">Challenge Kemi</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="doc-hero">
+  <h1>How Zollect works</h1>
+  <p>Zollect makes collectibles on Zcash that people actually own: each item, a zote, is a shielded note on the chain. This page explains the idea, shows how to check every claim yourself, and lists what isn't done yet.</p>
+</div>
+
+<div class="doc">
+  <nav class="toc" aria-label="On this page">
+    <ol>
+      <li><a href="#problem">The problem</a></li>
+      <li><a href="#zote">What a zote is</a></li>
+      <li><a href="#lifecycle">Mint, own, prove, sell</a></li>
+      <li><a href="#verify">Verify it yourself</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#privacy">Privacy model</a></li>
+      <li><a href="#limits">Limits, honestly</a></li>
+      <li><a href="#next">What's next</a></li>
+      <li><a href="#credits">Credits</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <section id="problem">
+      <h2>The problem</h2>
+      <p>Zcash mainnet has no token or NFT support. The standard that would add custom assets, Zcash Shielded Assets, isn't active on mainnet. So when a Zcash collectible is "sold" today, the buyer pays ZEC and a marketplace records the new owner in its own database. The buyer holds nothing on the chain and can't prove ownership without that marketplace. Explorers say so plainly: they can't verify ownership, because it isn't on the chain.</p>
+      <p>Zollect puts the item itself on the chain, today, with no protocol change.</p>
+    </section>
+
+    <section id="zote">
+      <h2>What a zote is</h2>
+      <p>A zote is a zero-value shielded note in Zcash's Ironwood pool. Its encrypted memo names the collection, the item number and the hop count (how many times it has changed hands). It sits at a vault address that holds that zote and nothing else, controlled by the owner's key.</p>
+      <p>Uniqueness comes from Zcash itself. In an Ironwood action, the new note created is bound to the note being spent in that same action. So when a zote moves, there is exactly one valid successor, and the old note's nullifier is published, which marks it spent forever. Nobody can copy a zote or sell it twice: the network rejects the second spend.</p>
+      <p class="callout">A zote is to Zollect what a token is to an NFT on other chains, except nobody watching the chain can see who holds it.</p>
+    </section>
+
+    <section id="lifecycle">
+      <h2>Mint, own, prove, sell</h2>
+      <h3>Mint and seal</h3>
+      <p>The issuer mints each zote in a chain of transactions from its own issuer key, one vault per zote, then sends a final seal note to an address nobody can spend. The issuer's viewing key is published, so anyone can count the collection. A zote minted after the seal fails the check.</p>
+      <h3>Own</h3>
+      <p>Holding a zote means holding the key to its vault. No list of owners exists anywhere.</p>
+      <h3>Prove</h3>
+      <p>A verifier sends a fresh random code. The owner's vault signs that exact code with the key that can spend the zote. The checker confirms the signature matches the note, the note is the current unspent zote of that item, and it traces back through every hop to the sealed mint. A replayed or old proof fails.</p>
+      <h3>Sell</h3>
+      <p>Buyer and seller build one transaction together as a partially created Zcash transaction (PCZT). The buyer adds the payment from their own funding wallet and a fresh vault for the zote, signs only their part, and removes their private details. The seller checks the payment amount, the recipient (their own address), the fee and that exactly their zote is being spent, then signs last and broadcasts. The zote and the ZEC move together or not at all.</p>
+    </section>
+
+    <section id="verify">
+      <h2>Verify it yourself</h2>
+      <p>The fastest way is the <a href="index.html#collection">Verify</a> and <a href="index.html#cheat">Try to cheat</a> buttons on the main page; they run the real checker against Zcash mainnet. To run it on your own machine:</p>
+<pre><code># build the read-only checker (Rust)
+git clone REPO_URL zollect && cd zollect
+cargo build --manifest-path verifier/Cargo.toml --release --locked --features mainnet
+
+# 1. Is Lagos Lights #2 genuine, and is the collection sealed?
+verifier/target/release/zecathon-carrier-verifier mainnet-verify-item \
+  https://na.zec.rocks:443 https://eu.zec.rocks:443 \
+  public/lagos-lights.issuer.ufvk lagos-lights 2 public/lagos-lights.mint-txids</code></pre>
+      <p>Expected output:</p>
+<pre><code>FINAL txid=d44ab08a9c212509ad0e88bba0d82f6183ae1852404e67c47dbb435a3fbd61ec action=0 height=3531330
+ITEM 1 VALID txid=abfb41a26bc70de6484f7b8edf4828ef079b4b8fda2857cb1858ee79130cfbda action=2
+ITEM 2 VALID txid=4971340fa5620a37ddd84b1b1890c3b8c24958100173e8fabb65ccf41ea4cca7 action=2
+ITEM 3 VALID txid=9ec4773a8828fac9dfd7a141a0294dbdbe338d263555080ddcaae3ff369fa060 action=0
+SUPPLY SEALED count=3</code></pre>
+<pre><code># 2. Tobi's pre-sale proof must now fail, and the sale must link the two notes
+zecathon-carrier-verifier mainnet-proof PRIMARY SECONDARY public/proofs/tobi-zote2.json CHALLENGE public/lagos-lights.zote2-chain
+zecathon-carrier-verifier mainnet-link  PRIMARY SECONDARY public/proofs/tobi-zote2.json public/proofs/kemi-zote2.json CHALLENGE public/lagos-lights.zote2-chain</code></pre>
+      <p>Expected: <code>SPENT … spending_txid=c08b51ee…</code> and <code>LINK VALID … same_action=1</code>.</p>
+      <p>Every check fetches only the listed transactions from two independent light-wallet servers, compares the full responses, and refuses if they disagree. Nothing is signed or broadcast. Each check takes one to five seconds.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="diagram" role="img" aria-label="Diagram: owner vaults build and sign transactions; two light-wallet servers relay to Zcash mainnet; the read-only checker and the website verify from the same two servers.">
+        <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" font-family="Sora, sans-serif" font-size="13">
+          <g fill="#16183A" stroke="#3B4170">
+            <rect x="20" y="30" width="180" height="70" rx="14"/>
+            <rect x="20" y="160" width="180" height="70" rx="14"/>
+            <rect x="270" y="95" width="180" height="70" rx="14"/>
+            <rect x="520" y="30" width="180" height="70" rx="14"/>
+            <rect x="520" y="160" width="180" height="70" rx="14"/>
+          </g>
+          <rect x="270" y="95" width="180" height="70" rx="14" fill="none" stroke="#F4B728"/>
+          <g fill="#ECEDF7">
+            <text x="110" y="62" text-anchor="middle">Owner vaults</text>
+            <text x="110" y="82" text-anchor="middle" fill="#9A9EC0" font-size="11">one key per zote</text>
+            <text x="110" y="192" text-anchor="middle">Sale tool (PCZT)</text>
+            <text x="110" y="212" text-anchor="middle" fill="#9A9EC0" font-size="11">buyer + seller sign</text>
+            <text x="360" y="127" text-anchor="middle">Zcash mainnet</text>
+            <text x="360" y="147" text-anchor="middle" fill="#9A9EC0" font-size="11">Ironwood pool</text>
+            <text x="610" y="62" text-anchor="middle">Read-only checker</text>
+            <text x="610" y="82" text-anchor="middle" fill="#9A9EC0" font-size="11">CLI, open source</text>
+            <text x="610" y="192" text-anchor="middle">zollect website</text>
+            <text x="610" y="212" text-anchor="middle" fill="#9A9EC0" font-size="11">runs the same checker</text>
+          </g>
+          <g stroke="#9A9EC0" stroke-width="1.2" fill="none" marker-end="url(#a)">
+            <path d="M200 65 C240 65 240 120 268 125"/>
+            <path d="M200 195 C240 195 240 140 268 135"/>
+            <path d="M452 125 C490 120 490 65 518 65"/>
+            <path d="M452 135 C490 140 490 195 518 195"/>
+          </g>
+          <text x="485" y="112" fill="#F4B728" font-size="11" text-anchor="middle">2 servers</text>
+          <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#9A9EC0"/></marker></defs>
+        </svg>
+      </div>
+      <ul>
+        <li><strong>Checker</strong> (Rust, read-only): verifies issuance and seal, ownership proofs, and the link between successive owners.</li>
+        <li><strong>Sender tools</strong> (Rust): mint, transfer, prepare and sign sales. Every mainnet send requires two-server agreement, a fee guard, a single-zote vault and fees paid from a separate funding wallet.</li>
+        <li><strong>Website</strong> (Node): exposes fixed, rate-limited read-only operations. Browsers never send keys or file paths.</li>
+      </ul>
+    </section>
+
+    <section id="privacy">
+      <h2>Privacy model</h2>
+      <ul>
+        <li><strong>Chain watchers</strong> see shielded transactions only: no owners, buyers, sellers, prices or which zote moved.</li>
+        <li><strong>A verifier</strong> learns that a zote is genuine and held, plus that zote's vault history. A vault holds one zote and nothing else, so no wallet balances or other holdings are exposed.</li>
+        <li><strong>The seller</strong> learns the buyer's one-time vault for this zote, not their funding wallet.</li>
+        <li><strong>The buyer</strong> learns the zote's hop count and dates before buying.</li>
+        <li><strong>The issuer's</strong> viewing key is public by design, so anyone can count the collection and see mint-time vault addresses. Vaults are fresh per zote.</li>
+        <li><strong>Light-wallet servers</strong> see the IP address and timing of checker requests.</li>
+      </ul>
+      <p>The full threat model is in the repository's <code>THREAT_MODEL.md</code>.</p>
+    </section>
+
+    <section id="limits">
+      <h2>Limits, honestly</h2>
+      <ul>
+        <li><strong>No wallet support yet.</strong> Zodl, Zingo and other wallets don't recognise zotes. Importing a vault seed into an ordinary wallet could spend the zero-value note and destroy the zote. Zotes live in Zollect's own vault tool for now; the <a href="standard.html">Zote standard draft</a> describes what wallets would need.</li>
+        <li><strong>The seal is a checker rule.</strong> The network would accept a transaction minting after the seal; the checker rejects it, so it never counts as a genuine zote.</li>
+        <li><strong>Attack tests ran on a test chain</strong> (double spend, forged successor, mint after seal). The mainnet "Try to cheat" buttons test old, forged and wrong-key proofs live.</li>
+        <li><strong>The demo collection and owners are ours.</strong> Lagos Lights shows the mechanism; it is not user traction.</li>
+        <li><strong>An earlier collection is superseded.</strong> Its seal was encrypted so it couldn't be read; the bug was fixed and Lagos Lights replaced it. Both are recorded on the <a href="evidence.html">evidence page</a>.</li>
+        <li><strong>Prototype code, not audited.</strong></li>
+      </ul>
+    </section>
+
+    <section id="next">
+      <h2>What's next</h2>
+      <ul>
+        <li>Propose the <a href="standard.html">Zote standard</a> to Zodl and Zingo so zotes show up in everyday wallets.</li>
+        <li>Sealed-bid primary sales that deliver a zote to the winning bidder.</li>
+        <li>A claim flow so an existing collection can move from a database to real zotes.</li>
+        <li>Route checker traffic over Tor.</li>
+        <li>A lineage proof that lets a buyer verify history without seeing earlier hops.</li>
+      </ul>
+    </section>
+
+    <section id="credits">
+      <h2>Credits</h2>
+      <p>The carrier-note idea, using Orchard-style note binding for collectibles, comes from Zarrier, a testnet proof of concept. Zollect is a new implementation for Ironwood mainnet, written for Zecathon. Built on the Zcash Rust crates (orchard, zcash_primitives, zcash_client_backend, pczt).</p>
+    </section>
+  </article>
+</div>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <p class="brand"><span class="brand-dot" aria-hidden="true"></span>Zollect</p>
+    <p class="credit">Built for Zecathon, submitted on Zcash's tenth birthday.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -25,6 +25,13 @@ const config = {
   collection: process.env.COLLECTION_ID ?? "",
   items: parseJsonEnv("ITEM_CONFIG_JSON", []),
   holder: parseJsonEnv("HOLDER_CONFIG_JSON", null),
+  challengeItem: Number(process.env.CHALLENGE_ITEM ?? 2),
+  links: parseJsonEnv("PUBLIC_LINKS_JSON", {
+    repo: "https://example.invalid/zecathon-repo",
+    evidence: "https://example.invalid/zecathon-evidence",
+    video: "https://example.invalid/zecathon-video",
+  }),
+  attackFixtures: parseJsonEnv("ATTACK_CONFIG_JSON", {}),
   publicRecordsFile:
     process.env.PUBLIC_RECORDS_FILE ?? path.join(directory, "public-records.json"),
 };
@@ -114,7 +121,7 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function runVerifier(args, timeoutMs = 15_000) {
+function runVerifierResult(args, timeoutMs = 15_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(config.verifier, args, {
       cwd: directory,
@@ -123,26 +130,46 @@ function runVerifier(args, timeoutMs = 15_000) {
     });
     const stdout = [];
     const stderr = [];
+    let finished = false;
     const timer = setTimeout(() => {
+      finished = true;
       child.kill("SIGTERM");
-      reject(new Error("Verifier timed out"));
+      resolve({
+        code: null,
+        timedOut: true,
+        stdout: Buffer.concat(stdout).toString("utf8").trim(),
+        stderr: Buffer.concat(stderr).toString("utf8").trim(),
+      });
     }, timeoutMs);
     child.stdout.on("data", (chunk) => stdout.push(chunk));
     child.stderr.on("data", (chunk) => stderr.push(chunk));
     child.once("error", (error) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
       reject(error);
     });
     child.once("close", (code) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
-      const result = {
+      resolve({
+        code,
+        timedOut: false,
         stdout: Buffer.concat(stdout).toString("utf8").trim(),
         stderr: Buffer.concat(stderr).toString("utf8").trim(),
-      };
-      if (code === 0) return resolve(result);
-      reject(new Error(result.stdout || result.stderr || `Verifier exited with ${code}`));
+      });
     });
   });
+}
+
+async function runVerifier(args, timeoutMs = 15_000) {
+  const result = await runVerifierResult(args, timeoutMs);
+  if (result.timedOut) throw new Error("Verifier timed out");
+  if (result.code !== 0) {
+    throw new Error(result.stdout || result.stderr || `Verifier exited with ${result.code}`);
+  }
+  return result;
 }
 
 function configuredItem(number) {
@@ -224,6 +251,37 @@ async function challengeHolder(request) {
   }
 }
 
+async function runAttack(request) {
+  const kind = (await readBody(request)).kind;
+  const fixture = config.attackFixtures[kind];
+  if (!fixture || !["old-proof", "forged-signature", "wrong-key"].includes(kind)) {
+    return { status: 400, body: { error: "Unsupported attack kind" } };
+  }
+  if (!fixture.proofFile || !fixture.challenge) {
+    return { status: 503, body: { error: "Attack fixture is not configured" } };
+  }
+  const guard = await operationGuard(request);
+  if (guard) return { status: 429, body: { error: guard } };
+  const args = [
+    "mainnet-proof",
+    config.primary,
+    config.secondary,
+    fixture.proofFile,
+    fixture.challenge,
+  ];
+  if (fixture.txidListFile) args.push(fixture.txidListFile);
+  try {
+    const result = await runVerifierResult(args);
+    if (result.timedOut) return { status: 502, body: { error: "Verifier timed out" } };
+    return {
+      status: 200,
+      body: { output: result.stdout || result.stderr || `Verifier exited with ${result.code}` },
+    };
+  } catch (error) {
+    return { status: 502, body: { error: error.message } };
+  }
+}
+
 async function publicRecords() {
   try {
     return JSON.parse(await readFile(config.publicRecordsFile, "utf8"));
@@ -258,6 +316,8 @@ const server = createServer(async (request, response) => {
         collection: config.collection,
         items: config.items.map(publicItem),
         challengeAvailable: Boolean(config.holder),
+        challengeItem: config.challengeItem,
+        links: config.links,
         records: await publicRecords(),
       });
     }
@@ -267,6 +327,10 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/api/challenge") {
       const result = await challengeHolder(request);
+      return json(response, result.status, result.body);
+    }
+    if (request.method === "POST" && url.pathname === "/api/attack") {
+      const result = await runAttack(request);
       return json(response, result.status, result.body);
     }
     if (request.method === "GET") return serveStatic(request, response, url.pathname);
