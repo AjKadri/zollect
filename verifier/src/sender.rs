@@ -915,6 +915,600 @@ pub(crate) fn sale_sign(
     Ok(())
 }
 
+const AUCTION_MEMO_PREFIX: &str = "ZEC-A2";
+
+fn auction_commitment(auction_id: &str, bidder_id: &str, bid_zat: u64, nonce: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"zecathon-auction-bid-v1|");
+    hash.update(auction_id.as_bytes());
+    hash.update(b"|");
+    hash.update(bidder_id.as_bytes());
+    hash.update(b"|");
+    hash.update(bid_zat.to_string().as_bytes());
+    hash.update(b"|");
+    hash.update(nonce.as_bytes());
+    hex::encode(hash.finalize())
+}
+
+fn auction_memo(auction_id: &str, bidder_id: &str, commitment: &str) -> Result<MemoBytes> {
+    ensure!(
+        !auction_id.is_empty()
+            && !bidder_id.is_empty()
+            && !auction_id.contains('|')
+            && !bidder_id.contains('|')
+            && commitment.len() == 64
+            && commitment.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "Invalid auction commitment fields"
+    );
+    Ok(MemoBytes::from_bytes(
+        format!("{AUCTION_MEMO_PREFIX}|{auction_id}|{bidder_id}|{commitment}").as_bytes(),
+    )?)
+}
+
+fn auction_address(value: &str, label: &str) -> Result<Address> {
+    let address = UnifiedAddress::decode(&network(), value)
+        .with_context(|| format!("Invalid {label} address"))?;
+    Ok(*address
+        .orchard()
+        .with_context(|| format!("{label} address has no Orchard receiver"))?)
+}
+
+fn parse_auction_memo(memo: &[u8; 512]) -> Option<(String, String, String)> {
+    let mut fields = memo_text(memo).split('|');
+    if fields.next()? != AUCTION_MEMO_PREFIX {
+        return None;
+    }
+    let auction_id = fields.next()?.to_owned();
+    let bidder_id = fields.next()?.to_owned();
+    let commitment = fields.next()?.to_owned();
+    if fields.next().is_some()
+        || auction_id.is_empty()
+        || bidder_id.is_empty()
+        || commitment.len() != 64
+        || !commitment.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some((auction_id, bidder_id, commitment))
+}
+
+pub(crate) fn auction_bid(
+    url: &str,
+    bidder_wallet: &str,
+    bidder_identity: &str,
+    escrow_address: &str,
+    auction_id: &str,
+    bidder_id: &str,
+    bid_zat: u64,
+    nonce: &str,
+    refund_address: &str,
+    output: &str,
+    secondary_url: Option<&str>,
+) -> Result<()> {
+    ensure!(bid_zat > 0, "Bid must be positive");
+    ensure!(!nonce.is_empty(), "Bid nonce must be non-empty");
+    ensure_regtest_chain(url)?;
+    if let Some(secondary_url) = secondary_url {
+        ensure_regtest_chain(secondary_url)?;
+    }
+    let bidder_usk = spending_key(bidder_wallet, bidder_identity)?;
+    let bidder_fvk = orchard::keys::FullViewingKey::from(bidder_usk.orchard());
+    let bidder_txs = load_chain_for_key(url, &bidder_fvk, secondary_url)?;
+    let spent: HashSet<_> = bidder_txs
+        .iter()
+        .flat_map(|tx| tx.nullifiers.iter().cloned())
+        .collect();
+    let (funding_tx, funding_index, funding_note) = bidder_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter().map(move |(index, note)| (tx, *index, note)))
+        .find(|(_, _, note)| {
+            note.owned
+                && note.note.value().inner() > bid_zat.saturating_add(15000)
+                && !spent.contains(&hex::encode(note.note.nullifier(&bidder_fvk).to_bytes()))
+        })
+        .context("Need an unspent bidder note covering bid and fee")?;
+    let escrow = auction_address(escrow_address, "escrow")?;
+    let refund = auction_address(refund_address, "refund")?;
+    ensure!(
+        bidder_fvk.scope_for_address(&escrow).is_none()
+            && bidder_fvk.scope_for_address(&refund).is_some(),
+        "Refund address must belong to bidder wallet and escrow must be separate"
+    );
+    let commitment = auction_commitment(auction_id, bidder_id, bid_zat, nonce);
+    let bid_memo = auction_memo(auction_id, bidder_id, &commitment)?;
+    let funding_path = witness(&bidder_txs, &funding_tx.txid, funding_index)?;
+    let anchor = funding_path.root(funding_note.note.commitment().into());
+    let tip = rpc(url, "getblockcount", json!([]))?
+        .as_u64()
+        .context("No tip")? as u32;
+    let mut fee_probe = Builder::new(
+        network(),
+        BlockHeight::from_u32(tip + 1),
+        BuildConfig::Standard {
+            sapling_anchor: None,
+            orchard_anchor: None,
+            ironwood_anchor: Some(anchor),
+            orchard_padding: BundlePadding::DEFAULT,
+            ironwood_padding: BundlePadding::DEFAULT,
+        },
+    );
+    fee_probe
+        .add_ironwood_spend::<Infallible>(
+            bidder_fvk.clone(),
+            funding_note.note,
+            funding_path.clone(),
+        )
+        .map_err(|e| anyhow!("Bid fee probe input: {e:?}"))?;
+    fee_probe
+        .add_ironwood_output::<Infallible>(
+            None,
+            escrow,
+            Zatoshis::from_u64(bid_zat)?,
+            bid_memo.clone(),
+        )
+        .map_err(|e| anyhow!("Bid escrow output: {e:?}"))?;
+    fee_probe
+        .add_ironwood_output::<Infallible>(
+            Some(bidder_fvk.to_ovk(Scope::External)),
+            bidder_fvk.address_at(1u64, Scope::Internal),
+            Zatoshis::from_u64(1)?,
+            MemoBytes::empty(),
+        )
+        .map_err(|e| anyhow!("Bid change output: {e:?}"))?;
+    let fee_zat = fee_probe
+        .get_fee(&zip317::FeeRule::standard())
+        .map_err(|e| anyhow!("Bid fee calculation: {e:?}"))?
+        .into_u64();
+    let change = funding_note
+        .note
+        .value()
+        .inner()
+        .checked_sub(bid_zat + fee_zat)
+        .context("Bidder note is too small after fee")?;
+    let prover = LocalTxProver::bundled();
+    let mut builder = Builder::new(
+        network(),
+        BlockHeight::from_u32(tip + 1),
+        BuildConfig::Standard {
+            sapling_anchor: None,
+            orchard_anchor: None,
+            ironwood_anchor: Some(anchor),
+            orchard_padding: BundlePadding::DEFAULT,
+            ironwood_padding: BundlePadding::DEFAULT,
+        },
+    );
+    builder
+        .add_ironwood_spend::<Infallible>(bidder_fvk.clone(), funding_note.note, funding_path)
+        .map_err(|e| anyhow!("Bid input: {e:?}"))?;
+    builder
+        .add_ironwood_output::<Infallible>(
+            None,
+            escrow,
+            Zatoshis::from_u64(bid_zat)?,
+            bid_memo,
+        )
+        .map_err(|e| anyhow!("Bid escrow output: {e:?}"))?;
+    builder
+        .add_ironwood_output::<Infallible>(
+            Some(bidder_fvk.to_ovk(Scope::External)),
+            bidder_fvk.address_at(1u64, Scope::Internal),
+            Zatoshis::from_u64(change)?,
+            MemoBytes::empty(),
+        )
+        .map_err(|e| anyhow!("Bid change output: {e:?}"))?;
+    let built = builder
+        .build(
+            &transparent::builder::TransparentSigningSet::new(),
+            &[],
+            &[SpendAuthorizingKey::from(bidder_usk.orchard())],
+            UnwrapErr(SysRng),
+            &prover,
+            &prover,
+            &zip317::FeeRule::standard(),
+        )
+        .map_err(|e| anyhow!("Bid build: {e:?}"))?;
+    let tx = built.transaction();
+    let mut raw = Vec::new();
+    tx.write(&mut raw)?;
+    fs::write(output, raw)?;
+    fs::write(
+        format!("{output}.json"),
+        serde_json::to_vec_pretty(&json!({
+            "auction_id": auction_id,
+            "bidder": bidder_id,
+            "bid_zat": bid_zat,
+            "nonce": nonce,
+            "commitment": commitment,
+            "refund_address": refund_address,
+            "commit_txid": tx.txid().to_string(),
+        }))?,
+    )?;
+    println!(
+        "AUCTION_BID_READY auction={} bidder={} bid_zat={} commitment={} fee_zat={} raw_file={} reveal_file={}.json txid={}",
+        auction_id, bidder_id, bid_zat, commitment, fee_zat, output, output, tx.txid()
+    );
+    Ok(())
+}
+
+pub(crate) fn auction_settle(
+    url: &str,
+    seller_wallet: &str,
+    seller_identity: &str,
+    origin: &str,
+    origin_action: usize,
+    escrow_wallet: &str,
+    escrow_identity: &str,
+    funding_wallet: &str,
+    funding_identity: &str,
+    winner_vault_address: &str,
+    seller_payment_address: &str,
+    auction_id: &str,
+    close_height: u32,
+    reveals_file: &str,
+    output: &str,
+    secondary_url: Option<&str>,
+) -> Result<()> {
+    ensure_regtest_chain(url)?;
+    if let Some(secondary_url) = secondary_url {
+        ensure_regtest_chain(secondary_url)?;
+    }
+    let tip = rpc(url, "getblockcount", json!([]))?
+        .as_u64()
+        .context("No tip")? as u32;
+    ensure!(
+        tip >= close_height,
+        "Auction is not closed: tip={} close_height={close_height}",
+        tip
+    );
+    let reveals: Vec<Value> = serde_json::from_slice(&fs::read(reveals_file)?)?;
+    ensure!(!reveals.is_empty(), "Auction needs at least one reveal");
+
+    let seller_usk = spending_key(seller_wallet, seller_identity)?;
+    let seller_fvk = orchard::keys::FullViewingKey::from(seller_usk.orchard());
+    let escrow_usk = spending_key(escrow_wallet, escrow_identity)?;
+    let escrow_fvk = orchard::keys::FullViewingKey::from(escrow_usk.orchard());
+    let funding_usk = spending_key(funding_wallet, funding_identity)?;
+    let funding_fvk = orchard::keys::FullViewingKey::from(funding_usk.orchard());
+    ensure!(
+        seller_fvk.to_bytes() != escrow_fvk.to_bytes()
+            && seller_fvk.to_bytes() != funding_fvk.to_bytes()
+            && escrow_fvk.to_bytes() != funding_fvk.to_bytes(),
+        "Seller, escrow and fee wallets must be separate"
+    );
+    let seller_txs = load_chain_for_key(url, &seller_fvk, secondary_url)?;
+    let escrow_txs = load_chain_for_key(url, &escrow_fvk, secondary_url)?;
+    let funding_txs = load_chain_for_key(url, &funding_fvk, secondary_url)?;
+    let origin_tx = seller_txs
+        .iter()
+        .find(|tx| tx.txid == origin)
+        .context("Seller carrier transaction not found")?;
+    let carrier = &origin_tx
+        .notes
+        .iter()
+        .find(|(index, note)| *index == origin_action && note.owned)
+        .context("Seller carrier is not owned")?
+        .1;
+    let seller_recipient = carrier.note.recipient().to_raw_address_bytes();
+    let seller_vault_notes: Vec<_> = seller_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter())
+        .filter(|(_, note)| {
+            note.owned && note.note.recipient().to_raw_address_bytes() == seller_recipient
+        })
+        .collect();
+    ensure!(
+        seller_vault_notes.len() == 1,
+        "Seller item vault must hold exactly one item and no other notes; found={}",
+        seller_vault_notes.len()
+    );
+    let carrier_meta =
+        parse_carrier_memo(&carrier.memo).context("Seller note is not a carrier")?;
+    let item = carrier_meta.item.context("Seller note is not an item")?;
+    ensure!(
+        carrier.note.value().inner() == 0,
+        "Seller carrier must be zero value"
+    );
+    let seller_nullifier = hex::encode(carrier.note.nullifier(&seller_fvk).to_bytes());
+    ensure!(
+        !seller_txs
+            .iter()
+            .any(|tx| tx.txid != origin && tx.nullifiers.contains(&seller_nullifier)),
+        "Seller carrier is already spent"
+    );
+    let winner_vault = auction_address(winner_vault_address, "winner vault")?;
+    let seller_payment = auction_address(seller_payment_address, "seller payment")?;
+    ensure!(
+        winner_vault.to_raw_address_bytes() != seller_recipient
+            && seller_fvk.scope_for_address(&winner_vault).is_none()
+            && seller_payment.to_raw_address_bytes() != seller_recipient,
+        "Winner vault and seller payment must be outside the seller item vault"
+    );
+    let carrier_path = witness(&seller_txs, origin, origin_action)?;
+    let anchor = carrier_path.root(carrier.note.commitment().into());
+    let escrow_spent: HashSet<_> = escrow_txs
+        .iter()
+        .flat_map(|tx| tx.nullifiers.iter().cloned())
+        .collect();
+    let mut bidders = Vec::new();
+    let mut bidder_ids = HashSet::new();
+    for reveal in reveals {
+        let bidder = reveal["bidder"].as_str().context("Reveal missing bidder")?;
+        let bid_zat = reveal["bid_zat"].as_u64().context("Reveal missing bid")?;
+        let nonce = reveal["nonce"].as_str().context("Reveal missing nonce")?;
+        let commitment = reveal["commitment"]
+            .as_str()
+            .context("Reveal missing commitment")?;
+        let refund_address = reveal["refund_address"]
+            .as_str()
+            .context("Reveal missing refund")?;
+        ensure!(bidder_ids.insert(bidder.to_owned()), "Duplicate bidder reveal");
+        ensure!(
+            auction_commitment(auction_id, bidder, bid_zat, nonce) == commitment,
+            "Reveal commitment mismatch for bidder={bidder}"
+        );
+        let refund = auction_address(refund_address, "refund")?;
+        let commit_txid = reveal["commit_txid"]
+            .as_str()
+            .context("Reveal missing commit txid")?;
+        let matches: Vec<_> = escrow_txs
+            .iter()
+            .flat_map(|tx| tx.notes.iter().map(move |(index, note)| (tx, *index, note)))
+            .filter(|(tx, _, note)| {
+                tx.height <= u64::from(close_height)
+                    && note.owned
+                    && tx.txid == commit_txid
+                    && note.note.value().inner() == bid_zat
+                    && parse_auction_memo(&note.memo).is_some_and(
+                        |(memo_auction, memo_bidder, memo_commitment)| {
+                            memo_auction == auction_id
+                                && memo_bidder == bidder
+                                && memo_commitment == commitment
+                        },
+                    )
+            })
+            .collect();
+        ensure!(
+            matches.len() == 1,
+            "Reveal commit note not found exactly once for bidder={bidder}"
+        );
+        let (tx, index, note) = matches[0];
+        let nullifier = hex::encode(note.note.nullifier(&escrow_fvk).to_bytes());
+        ensure!(
+            !escrow_spent.contains(&nullifier),
+            "Reveal commit note already spent"
+        );
+        ensure!(
+            witness(&escrow_txs, &tx.txid, index)?
+                .root(note.note.commitment().into())
+                == anchor,
+            "Escrow witness anchor differs"
+        );
+        println!(
+            "AUCTION_REVEAL auction={} bidder={} bid_zat={} commitment=VALID commit_txid={} close_height={}",
+            auction_id, bidder, bid_zat, commit_txid, close_height
+        );
+        bidders.push((
+            bidder.to_owned(),
+            bid_zat,
+            refund,
+            note.note,
+            tx.txid.clone(),
+            index,
+        ));
+    }
+    ensure!(bidders.len() >= 2, "Auction needs at least two revealed bids");
+    bidders.sort_by_key(|(_, bid, _, _, _, _)| std::cmp::Reverse(*bid));
+    ensure!(
+        bidders[0].1 > bidders[1].1,
+        "Auction tie requires an explicit tie-break rule"
+    );
+    let winner = &bidders[0];
+    let successor_memo = carrier_memo(
+        &carrier_meta.collection,
+        item,
+        carrier_meta.hop + 1,
+    )?;
+    let funding_spent: HashSet<_> = funding_txs
+        .iter()
+        .flat_map(|tx| tx.nullifiers.iter().cloned())
+        .collect();
+    let (funding_tx, funding_index, funding_note) = funding_txs
+        .iter()
+        .flat_map(|tx| tx.notes.iter().map(move |(index, note)| (tx, *index, note)))
+        .find(|(_, _, note)| {
+            note.owned
+                && note.note.value().inner() > 15000
+                && !funding_spent.contains(&hex::encode(note.note.nullifier(&funding_fvk).to_bytes()))
+        })
+        .context("Need a separate fee-wallet note")?;
+    let funding_path = witness(&funding_txs, &funding_tx.txid, funding_index)?;
+    ensure!(
+        funding_path.root(funding_note.note.commitment().into()) == anchor,
+        "Funding witness anchor differs"
+    );
+    let add_outputs = |builder: &mut Builder<_, _>, fee_change: u64| -> Result<()> {
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                winner_vault,
+                Zatoshis::ZERO,
+                successor_memo.clone(),
+            )
+            .map_err(|e| anyhow!("Winner carrier output: {e:?}"))?;
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                seller_payment,
+                Zatoshis::from_u64(winner.1)?,
+                MemoBytes::empty(),
+            )
+            .map_err(|e| anyhow!("Seller payment output: {e:?}"))?;
+        for (_, bid, refund, _, _, _) in bidders.iter().skip(1) {
+            builder
+                .add_ironwood_output::<Infallible>(
+                    None,
+                    *refund,
+                    Zatoshis::from_u64(*bid)?,
+                    MemoBytes::empty(),
+                )
+                .map_err(|e| anyhow!("Refund output: {e:?}"))?;
+        }
+        builder
+            .add_ironwood_output::<Infallible>(
+                Some(funding_fvk.to_ovk(Scope::External)),
+                funding_fvk.address_at(1u64, Scope::Internal),
+                Zatoshis::from_u64(fee_change)?,
+                MemoBytes::empty(),
+            )
+            .map_err(|e| anyhow!("Fee-wallet change output: {e:?}"))?;
+        Ok(())
+    };
+    let mut fee_probe = Builder::new(
+        network(),
+        BlockHeight::from_u32(tip + 1),
+        BuildConfig::Standard {
+            sapling_anchor: None,
+            orchard_anchor: None,
+            ironwood_anchor: Some(anchor),
+            orchard_padding: BundlePadding::DEFAULT,
+            ironwood_padding: BundlePadding::DEFAULT,
+        },
+    );
+    fee_probe
+        .add_ironwood_spend::<Infallible>(seller_fvk.clone(), carrier.note, carrier_path.clone())
+        .map_err(|e| anyhow!("Auction carrier fee input: {e:?}"))?;
+    for (_, _, _, note, txid, index) in &bidders {
+        fee_probe
+            .add_ironwood_spend::<Infallible>(
+                escrow_fvk.clone(),
+                *note,
+                witness(&escrow_txs, txid, *index)?,
+            )
+            .map_err(|e| anyhow!("Auction escrow fee input: {e:?}"))?;
+    }
+    fee_probe
+        .add_ironwood_spend::<Infallible>(
+            funding_fvk.clone(),
+            funding_note.note,
+            funding_path.clone(),
+        )
+        .map_err(|e| anyhow!("Auction funding fee input: {e:?}"))?;
+    add_outputs(&mut fee_probe, 1)?;
+    let fee_zat = fee_probe
+        .get_fee(&zip317::FeeRule::standard())
+        .map_err(|e| anyhow!("Auction fee calculation: {e:?}"))?
+        .into_u64();
+    let fee_change = funding_note
+        .note
+        .value()
+        .inner()
+        .checked_sub(fee_zat)
+        .context("Fee-wallet note is too small")?;
+    let prover = LocalTxProver::bundled();
+    let mut keys = Vec::with_capacity(bidders.len() + 2);
+    keys.push(SpendAuthorizingKey::from(seller_usk.orchard()));
+    for _ in &bidders {
+        keys.push(SpendAuthorizingKey::from(escrow_usk.orchard()));
+    }
+    keys.push(SpendAuthorizingKey::from(funding_usk.orchard()));
+    for candidate in 1..=64 {
+        let mut builder = Builder::new(
+            network(),
+            BlockHeight::from_u32(tip + 1),
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_padding: BundlePadding::DEFAULT,
+                ironwood_padding: BundlePadding::DEFAULT,
+            },
+        );
+        builder
+            .add_ironwood_spend::<Infallible>(
+                seller_fvk.clone(),
+                carrier.note,
+                carrier_path.clone(),
+            )
+            .map_err(|e| anyhow!("Auction carrier input: {e:?}"))?;
+        for (_, _, _, note, txid, index) in &bidders {
+            builder
+                .add_ironwood_spend::<Infallible>(
+                    escrow_fvk.clone(),
+                    *note,
+                    witness(&escrow_txs, txid, *index)?,
+                )
+                .map_err(|e| anyhow!("Auction escrow input: {e:?}"))?;
+        }
+        builder
+            .add_ironwood_spend::<Infallible>(
+                funding_fvk.clone(),
+                funding_note.note,
+                funding_path.clone(),
+            )
+            .map_err(|e| anyhow!("Auction funding input: {e:?}"))?;
+        add_outputs(&mut builder, fee_change)?;
+        let built = builder
+            .build(
+                &transparent::builder::TransparentSigningSet::new(),
+                &[],
+                &keys,
+                UnwrapErr(SysRng),
+                &prover,
+                &prover,
+                &zip317::FeeRule::standard(),
+            )
+            .map_err(|e| anyhow!("Auction settlement build: {e:?}"))?;
+        let carrier_action = built
+            .ironwood_meta()
+            .spend_action_index(0)
+            .context("No auction carrier action")?;
+        let successor_action = built
+            .ironwood_meta()
+            .output_action_index(0)
+            .context("No auction successor action")?;
+        println!(
+            "AUCTION_CONSTRUCTION candidate={} carrier_action={} successor_action={}",
+            candidate, carrier_action, successor_action
+        );
+        if carrier_action != successor_action {
+            continue;
+        }
+        let tx = built.transaction();
+        let mut raw = Vec::new();
+        tx.write(&mut raw)?;
+        fs::write(output, raw)?;
+        fs::write(
+            format!("{output}.json"),
+            serde_json::to_vec_pretty(&json!({
+                "auction_id": auction_id,
+                "close_height": close_height,
+                "winner": winner.0,
+                "winning_bid_zat": winner.1,
+                "refund_count": bidders.len() - 1,
+                "fee_zat": fee_zat,
+                "txid": tx.txid().to_string(),
+                "carrier_action": carrier_action,
+                "successor_action": successor_action,
+            }))?,
+        )?;
+        println!(
+            "AUCTION_SETTLEMENT_READY auction={} winner={} winning_bid_zat={} refunds={} close_height={} tip={} txid={} carrier_action={} fee_zat={} raw_file={}",
+            auction_id,
+            winner.0,
+            winner.1,
+            bidders.len() - 1,
+            close_height,
+            tip,
+            tx.txid(),
+            carrier_action,
+            fee_zat,
+            output
+        );
+        return Ok(());
+    }
+    bail!("No same-Action auction settlement candidate constructed; nothing broadcast")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -941,5 +1535,19 @@ mod tests {
             &seller_payment,
             100_000
         ));
+    }
+
+    #[test]
+    fn auction_commitment_binds_bid_fields() {
+        let first = auction_commitment("lagos-lights-auction", "bidder-a", 100_000, "nonce-a");
+        assert_eq!(first.len(), 64);
+        assert_ne!(
+            first,
+            auction_commitment("lagos-lights-auction", "bidder-a", 100_001, "nonce-a")
+        );
+        assert_ne!(
+            first,
+            auction_commitment("lagos-lights-auction", "bidder-b", 100_000, "nonce-a")
+        );
     }
 }

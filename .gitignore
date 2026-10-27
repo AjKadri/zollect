@@ -3,6 +3,7 @@
 .runtime/
 AGENTS.md
 plan.md
+docs/
 .secrets/
 .env
 .env.*
