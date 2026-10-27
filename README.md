@@ -2,6 +2,7 @@
 
 **Own it on Zcash. Prove it anywhere.**
 Collectibles held as shielded notes: provable by anyone, traceable by no one.
+
 ![Zollect: a zote from the Lagos Lights collection](docs/hero.png)
 
 Live site: https://zollect.ajkadri.dev · Zecathon entry, Private Markets track
@@ -49,6 +50,8 @@ verifier/target/release/zecathon-carrier-verifier mainnet-verify-item \
 
 Download the checker: [Linux x86-64 release binary](https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64) and [SHA-256 checksum](https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256).
 
+Run these from a clone of this repo; the `public/` folder holds the inputs.
+
 ```sh
 curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64
 curl -fsSLO https://github.com/AjKadri/zollect/releases/latest/download/zecathon-carrier-verifier-mainnet-linux-x86_64.sha256
@@ -93,8 +96,6 @@ Chain watchers learn nothing beyond the existence of shielded transactions. A ve
 
 The carrier-note idea comes from [Zarrier](https://github.com/Reiunmute/zcash-carrier), a testnet proof of concept. Zollect is a new implementation for Ironwood mainnet, written during Zecathon. Built on the Zcash Rust crates. See [CREDITS.md](CREDITS.md).
 
-AI coding assistants (Codex, Claude) were used during development under the author's direction.
-
 ## Licence
 
-Licensed under either of Apache-2.0 or MIT, at your option.
+Licensed under either of [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
