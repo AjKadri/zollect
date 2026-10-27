@@ -59,7 +59,6 @@ Every check fetches only the listed transactions from **two independent light-wa
 | `public/` | Public collection data: issuer viewing key, transaction lists, sample proofs |
 | `PUBLIC_EVIDENCE.md` | Every command and output behind the claims above |
 | `THREAT_MODEL.md` | Who learns what, and the residual risks |
-| `docs/DEVELOPER_NOTES.md` | Full command reference from the build |
 
 The [Zote standard draft](https://zollect.ajkadri.dev/standard.html) describes how any wallet or marketplace could support zotes.
 
