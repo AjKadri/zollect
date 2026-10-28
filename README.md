@@ -6,6 +6,7 @@ Collectibles held as shielded notes: provable by anyone, traceable by no one.
 ![Zollect: a zote from the Lagos Lights collection](docs/hero.png)
 
 Live site: https://zollect.ajkadri.dev · Zecathon entry, Private Markets track
+Demo video (2 min): [YOUTUBE LINK]
 
 ---
 

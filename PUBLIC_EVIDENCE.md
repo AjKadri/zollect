@@ -26,7 +26,7 @@ Error: FAIL mint_after_FINAL txid=e979c3ffe4b8bf541f117a74ea7e034ac07bb777212f51
 
 ```text
 COMMAND GET /api/collection
-collection=lagos-lights challengeItem=2 links.repo=https://example.invalid/zecathon-repo links.evidence=https://example.invalid/zecathon-evidence links.video=https://example.invalid/zecathon-video
+collection=lagos-lights challengeItem=2 links.repo=https://example.invalid/zecathon-repo links.evidence=https://example.invalid/zecathon-evidence links.video=https://example.invalid/zecathon-video; example.invalid was a placeholder link at the time of recording.
 records=bootstrap,3_mints,FINAL,transfer,sale
 
 COMMAND POST /api/verify-item {"item":2}
