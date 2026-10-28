@@ -53,12 +53,7 @@ strong { font-weight: 500; }
 
 .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 3; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 500; text-decoration: none; margin: 0; letter-spacing: -0.01em; }
-.brand-dot {
-  width: 22px; height: 22px; border-radius: 6px; flex: none;
-  background: var(--zec); color: var(--zec-ink);
-  display: grid; place-items: center; font-size: 13px; font-weight: 600;
-}
-.brand-dot::after { content: "Z"; }
+.brand-logo { width: 24px; height: 24px; flex: none; object-fit: contain; }
 .nav-links { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; align-items: center; }
 .nav-links a { display: block; padding: 8px 14px; border-radius: 999px; text-decoration: none; font-size: 14px; color: var(--muted); }
 .nav-links a:hover { color: var(--mist); }
@@ -116,11 +111,8 @@ strong { font-weight: 500; }
 .note-row { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .note-kicker { font-size: clamp(11px, 1vw, 14px); letter-spacing: .08em; color: var(--chrome); }
 .seal {
-  width: clamp(38px, 4.4vw, 58px); height: clamp(38px, 4.4vw, 58px); border-radius: 50%;
-  display: grid; place-items: center;
-  background: radial-gradient(circle at 35% 30%, #FFE08A, var(--zec) 55%, #B9850E);
-  color: var(--zec-ink); font-weight: 600; font-size: clamp(18px, 2vw, 26px);
-  box-shadow: 0 0 0 6px rgba(244,183,40,.15), 0 0 40px rgba(244,183,40,.45);
+  width: clamp(38px, 4.4vw, 58px); height: clamp(38px, 4.4vw, 58px); flex: none;
+  object-fit: contain; filter: drop-shadow(0 0 14px rgba(244,183,40,.45));
 }
 .note-title { position: relative; font-size: clamp(22px, 2.8vw, 40px); font-weight: 200; letter-spacing: -0.03em; }
 .serial { font: 500 clamp(10px, .95vw, 13px)/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; color: var(--chrome); }
@@ -177,9 +169,8 @@ main > section { max-width: var(--maxw); margin: 0 auto; padding: clamp(90px, 12
 }
 .zote-art .chip { position: absolute; left: 12px; top: 12px; z-index: 1; background: rgba(14,15,38,.75); }
 .zote-art .seal-sm {
-  position: absolute; right: 12px; bottom: 12px; z-index: 1; width: 34px; height: 34px; border-radius: 50%;
-  display: grid; place-items: center; font-weight: 600; font-size: 15px; color: var(--zec-ink);
-  background: radial-gradient(circle at 35% 30%, #FFE08A, var(--zec) 55%, #B9850E);
+  position: absolute; right: 12px; bottom: 12px; z-index: 1; width: 34px; height: 34px;
+  object-fit: contain; filter: drop-shadow(0 0 8px rgba(244,183,40,.4));
 }
 .zote-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
 .zote-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }

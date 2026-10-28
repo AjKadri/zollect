@@ -103,7 +103,7 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
     art.className = "zote-art";
     art.innerHTML = zoteArt(n);
     if (n === 2) art.append(chip("held", "Held by Kemi"));
-    const seal = document.createElement("span"); seal.className = "seal-sm"; seal.textContent = "Z"; art.append(seal);
+    const seal = document.createElement("img"); seal.className = "seal-sm"; seal.src = "logo.svg"; seal.alt = ""; seal.setAttribute("aria-hidden", "true"); art.append(seal);
     const body = document.createElement("div");
     body.className = "zote-body";
     const title = document.createElement("div");
