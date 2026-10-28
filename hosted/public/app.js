@@ -33,10 +33,19 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
 
   async function post(path, body) {
     const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let data;
+    try {
+      if (!raw.trim()) throw new Error("empty response");
+      data = JSON.parse(raw);
+    } catch {
+      const error = new Error(CHECK_LIMIT_MESSAGE);
+      error.code = "CHECKER_BUSY";
+      throw error;
+    }
     if (!res.ok && !data.output) {
       const error = new Error(data.error || `The checker answered ${res.status}.`);
-      error.code = data.error;
+      error.code = data.error === "Unexpected end of JSON input" ? "CHECKER_BUSY" : data.error;
       throw error;
     }
     return data;

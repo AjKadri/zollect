@@ -11,7 +11,8 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, "public");
 const port = Number(process.env.PORT ?? 8080);
 const rateLimitPerMinute = Number(process.env.RATE_LIMIT_PER_MINUTE ?? 30);
-const dailyCap = Number(process.env.DAILY_CAP ?? 100);
+const dailyCap = Number(process.env.DAILY_CAP ?? 5_000);
+const dailyCapPerIp = Number(process.env.DAILY_CAP_PER_IP ?? 300);
 const checkerConcurrency = Number(process.env.CHECKER_CONCURRENCY ?? 4);
 const checkerQueueTimeoutMs = Number(process.env.CHECKER_QUEUE_TIMEOUT_MS ?? 10_000);
 const dailyStateFile =
@@ -42,6 +43,7 @@ const config = {
 const requestTimes = new Map();
 let activeCheckerRuns = 0;
 const checkerQueue = [];
+let dailyCapLock = Promise.resolve();
 
 function parseJsonEnv(name, fallback) {
   const value = process.env[name];
@@ -142,19 +144,30 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function consumeDailyCap() {
-  let state = { date: today(), count: 0 };
+async function consumeDailyCap(address) {
+  let unlock;
+  const previous = dailyCapLock;
+  dailyCapLock = new Promise((resolve) => { unlock = resolve; });
+  await previous;
   try {
-    state = JSON.parse(await readFile(dailyStateFile, "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    let state = { date: today(), count: 0, byAddress: {} };
+    try {
+      state = JSON.parse(await readFile(dailyStateFile, "utf8"));
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (state.date !== today()) state = { date: today(), count: 0, byAddress: {} };
+    const byAddress = state.byAddress && typeof state.byAddress === "object" ? state.byAddress : {};
+    if (state.count >= dailyCap || (byAddress[address] ?? 0) >= dailyCapPerIp) return false;
+    state.count += 1;
+    byAddress[address] = (byAddress[address] ?? 0) + 1;
+    state.byAddress = byAddress;
+    await mkdir(path.dirname(dailyStateFile), { recursive: true });
+    await writeFile(dailyStateFile, JSON.stringify(state), { mode: 0o600 });
+    return true;
+  } finally {
+    unlock();
   }
-  if (state.date !== today()) state = { date: today(), count: 0 };
-  if (state.count >= dailyCap) return false;
-  state.count += 1;
-  await mkdir(path.dirname(dailyStateFile), { recursive: true });
-  await writeFile(dailyStateFile, JSON.stringify(state), { mode: 0o600 });
-  return true;
 }
 
 async function readBody(request) {
@@ -252,7 +265,7 @@ function configuredItem(number) {
 async function operationGuard(request) {
   if (killSwitchActive()) return "KILL_SWITCH_ACTIVE";
   if (!checkRateLimit(request)) return "RATE_LIMITED";
-  if (!(await consumeDailyCap())) return "DAILY_CAP_REACHED";
+  if (!(await consumeDailyCap(clientAddress(request)))) return "DAILY_CAP_REACHED";
   return null;
 }
 
