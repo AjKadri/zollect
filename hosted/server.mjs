@@ -10,8 +10,10 @@ import { randomBytes } from "node:crypto";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, "public");
 const port = Number(process.env.PORT ?? 8080);
-const rateLimitPerMinute = Number(process.env.RATE_LIMIT_PER_MINUTE ?? 6);
+const rateLimitPerMinute = Number(process.env.RATE_LIMIT_PER_MINUTE ?? 30);
 const dailyCap = Number(process.env.DAILY_CAP ?? 100);
+const checkerConcurrency = Number(process.env.CHECKER_CONCURRENCY ?? 4);
+const checkerQueueTimeoutMs = Number(process.env.CHECKER_QUEUE_TIMEOUT_MS ?? 10_000);
 const dailyStateFile =
   process.env.DAILY_STATE_FILE ?? path.join(os.tmpdir(), "bearer-hosted-daily.json");
 const killSwitchFile =
@@ -38,6 +40,8 @@ const config = {
 };
 
 const requestTimes = new Map();
+let activeCheckerRuns = 0;
+const checkerQueue = [];
 
 function parseJsonEnv(name, fallback) {
   const value = process.env[name];
@@ -85,6 +89,49 @@ function checkRateLimit(request) {
   recent.push(now);
   requestTimes.set(address, recent);
   return true;
+}
+
+function releaseCheckerRun() {
+  activeCheckerRuns -= 1;
+  while (activeCheckerRuns < checkerConcurrency && checkerQueue.length > 0) {
+    const waiter = checkerQueue.shift();
+    if (waiter.settled) continue;
+    waiter.settled = true;
+    clearTimeout(waiter.timer);
+    activeCheckerRuns += 1;
+    waiter.resolve(releaseCheckerRun);
+  }
+}
+
+function acquireCheckerRun() {
+  if (activeCheckerRuns < checkerConcurrency) {
+    activeCheckerRuns += 1;
+    return Promise.resolve(releaseCheckerRun);
+  }
+  return new Promise((resolve) => {
+    const waiter = { resolve, settled: false, timer: null };
+    waiter.timer = setTimeout(() => {
+      waiter.settled = true;
+      const index = checkerQueue.indexOf(waiter);
+      if (index !== -1) checkerQueue.splice(index, 1);
+      resolve(null);
+    }, checkerQueueTimeoutMs);
+    checkerQueue.push(waiter);
+  });
+}
+
+async function withCheckerRun(task) {
+  const release = await acquireCheckerRun();
+  if (!release) {
+    const error = new Error("CHECKER_BUSY");
+    error.code = "CHECKER_BUSY";
+    throw error;
+  }
+  try {
+    return await task();
+  } finally {
+    release();
+  }
 }
 
 function killSwitchActive() {
@@ -193,7 +240,7 @@ async function verifyItem(request) {
   const guard = await operationGuard(request);
   if (guard) return { status: 429, body: { error: guard } };
   try {
-    const result = await runVerifier([
+    const result = await withCheckerRun(() => runVerifier([
       "mainnet-verify-item",
       config.primary,
       config.secondary,
@@ -201,10 +248,13 @@ async function verifyItem(request) {
       config.collection,
       String(itemNumber),
       item.txidListFile,
-    ]);
+    ]));
     return { status: 200, body: { ok: true, item: publicItem(item), output: result.stdout } };
   } catch (error) {
-    return { status: 502, body: { ok: false, item: publicItem(item), error: error.message } };
+    return {
+      status: error.code === "CHECKER_BUSY" ? 503 : 502,
+      body: { ok: false, item: publicItem(item), error: error.message },
+    };
   }
 }
 
@@ -220,33 +270,38 @@ async function challengeHolder(request) {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "bearer-proof-"));
   const proofFile = path.join(temporaryDirectory, "proof.json");
   try {
-    await runVerifier([
-      "mainnet-attest",
-      config.primary,
-      config.secondary,
-      holder.wallet,
-      holder.identity,
-      holder.txid,
-      String(holder.action),
-      challenge,
-      proofFile,
-      config.collection,
-      String(holder.item),
-      holder.txidListFile,
-    ], 15_000, config.attestVerifier);
-    const result = await runVerifier([
-      "mainnet-proof",
-      config.primary,
-      config.secondary,
-      proofFile,
-      challenge,
-    ]);
+    const result = await withCheckerRun(async () => {
+      await runVerifier([
+        "mainnet-attest",
+        config.primary,
+        config.secondary,
+        holder.wallet,
+        holder.identity,
+        holder.txid,
+        String(holder.action),
+        challenge,
+        proofFile,
+        config.collection,
+        String(holder.item),
+        holder.txidListFile,
+      ], 15_000, config.attestVerifier);
+      return runVerifier([
+        "mainnet-proof",
+        config.primary,
+        config.secondary,
+        proofFile,
+        challenge,
+      ]);
+    });
     return {
       status: 200,
       body: { ok: true, item: holder.item, challenge, output: result.stdout },
     };
   } catch (error) {
-    return { status: 502, body: { ok: false, item: holder.item, challenge, error: error.message } };
+    return {
+      status: error.code === "CHECKER_BUSY" ? 503 : 502,
+      body: { ok: false, item: holder.item, challenge, error: error.message },
+    };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -272,14 +327,17 @@ async function runAttack(request) {
   ];
   if (fixture.txidListFile) args.push(fixture.txidListFile);
   try {
-    const result = await runVerifierResult(args);
+    const result = await withCheckerRun(() => runVerifierResult(args));
     if (result.timedOut) return { status: 502, body: { error: "Verifier timed out" } };
     return {
       status: 200,
       body: { output: result.stdout || result.stderr || `Verifier exited with ${result.code}` },
     };
   } catch (error) {
-    return { status: 502, body: { error: error.message } };
+    return {
+      status: error.code === "CHECKER_BUSY" ? 503 : 502,
+      body: { error: error.message },
+    };
   }
 }
 

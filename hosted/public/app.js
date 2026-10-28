@@ -29,12 +29,43 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
   ];
 
   let live = true;
+  const CHECK_LIMIT_MESSAGE = "Too many checks at once. Wait a few seconds and try again.";
 
   async function post(path, body) {
     const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok && !data.output) throw new Error(data.error || `The checker answered ${res.status}.`);
+    if (!res.ok && !data.output) {
+      const error = new Error(data.error || `The checker answered ${res.status}.`);
+      error.code = data.error;
+      throw error;
+    }
     return data;
+  }
+
+  function isCheckLimit(error) {
+    return error?.code === "RATE_LIMITED" || error?.code === "CHECKER_BUSY";
+  }
+
+  function renderNeutralVerdict(el) {
+    el.hidden = false;
+    el.classList.remove("is-error");
+    el.replaceChildren();
+    const head = document.createElement("div");
+    head.className = "verdict-head";
+    head.append(chip("valid", "Try again"));
+    el.append(head);
+    const ul = document.createElement("ul");
+    const li = document.createElement("li");
+    li.textContent = CHECK_LIMIT_MESSAGE;
+    ul.append(li);
+    el.append(ul);
+  }
+
+  function neutralVerdict() {
+    const res = document.createElement("div");
+    res.className = "verdict";
+    renderNeutralVerdict(res);
+    return res;
   }
 
   function parse(output = "") {
@@ -132,6 +163,7 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
         verdict(out, r.output ?? `FAIL ${r.error ?? "No result from the checker."}`, { item: n });
       } catch (e) {
         if (!live) verdict(out, RECORDED.verify, { item: n, recorded: true });
+        else if (isCheckLimit(e)) renderNeutralVerdict(out);
         else verdict(out, `FAIL ${e.message}`, { item: n });
       } finally {
         btn.disabled = false;
@@ -186,6 +218,14 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
         challenge = r.challenge; output = r.output ?? `FAIL ${r.error ?? "No answer."}`;
       } catch (e) {
         if (!live) { challenge = newCode(); output = RECORDED.held; recorded = true; }
+        else if (isCheckLimit(e)) {
+          code.textContent = "not issued";
+          l2.textContent = "Checker is busy";
+          box.append(neutralVerdict());
+          btn.disabled = false;
+          btn.textContent = "Send another challenge";
+          return;
+        }
         else { output = `FAIL ${e.message}`; }
       }
       code.textContent = challenge || "not issued";
@@ -263,6 +303,12 @@ VERIFY_TIMING mode=challenge-proof tx_count=7 elapsed_ms=4890`,
           output = r.output ?? `FAIL ${r.error ?? "No result."}`;
         } catch (e) {
           if (!live && RECORDED.attacks[kind]) { output = RECORDED.attacks[kind]; recorded = true; }
+          else if (isCheckLimit(e)) {
+            renderNeutralVerdict(out);
+            btn.disabled = false;
+            btn.textContent = label;
+            return;
+          }
           else if (!live) { output = null; }
           else output = `FAIL ${e.message}`;
         }
