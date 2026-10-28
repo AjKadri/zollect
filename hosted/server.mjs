@@ -158,15 +158,40 @@ async function consumeDailyCap() {
 }
 
 async function readBody(request) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > 16_384) throw new Error("Request body too large");
-    chunks.push(chunk);
-  }
-  if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    request.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > 16_384) {
+        fail(new Error("Request body too large"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.once("error", fail);
+    request.once("end", () => {
+      if (settled) return;
+      if (chunks.length === 0) {
+        resolve({});
+        return;
+      }
+      try {
+        settled = true;
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (error) {
+        fail(error);
+      }
+    });
+  });
 }
 
 function runVerifierResult(args, timeoutMs = 15_000, verifier = config.verifier) {
